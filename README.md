@@ -87,7 +87,11 @@ most RPS request starts per second with bursts up to BURST (default `1`);
 the limit is shared by the orchestrator and all parallel subagents, so it
 caps the whole run regardless of `--concurrency`, and unset means no limit;
 `DOKU_MODEL_MAX_RETRIES` — retries per request inside the provider client
-(`0` disables retrying, unset keeps the provider's default).
+(`0` disables retrying, unset keeps the provider's default);
+`DOKU_MODEL_TEMPERATURE` — optional non-negative sampling temperature;
+`DOKU_MODEL_REASONING_EFFORT` — optional provider/model-specific reasoning
+effort such as `low`, `medium`, or `high`. For OpenRouter this is sent through
+its `reasoning.effort` setting; other providers receive `reasoning_effort`.
 
 ### Custom OpenAI-compatible providers
 

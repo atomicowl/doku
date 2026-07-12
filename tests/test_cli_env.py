@@ -27,6 +27,8 @@ def clean_env(monkeypatch):
         "DOKU_MODEL_RPS",
         "DOKU_MODEL_BURST",
         "DOKU_MODEL_MAX_RETRIES",
+        "DOKU_MODEL_TEMPERATURE",
+        "DOKU_MODEL_REASONING_EFFORT",
         "DOKU_AGENTS_DIR",
         "DOKU_WORKFLOWS_DIR",
     ):
@@ -104,6 +106,22 @@ def test_model_tuning_disabled_by_default(captured_build, tmp_path):
     assert captured["model_rps"] is None
     assert captured["model_burst"] == 1
     assert captured["max_retries"] is None
+    assert captured["temperature"] is None
+    assert captured["reasoning_effort"] is None
+
+
+def test_temperature_and_reasoning_effort_from_env(captured_build, tmp_path):
+    captured = _run(
+        captured_build,
+        [FIXTURE_REPO, "--out", str(tmp_path)],
+        env={
+            "DOKU_MODEL": "openrouter:m",
+            "DOKU_MODEL_TEMPERATURE": "0.2",
+            "DOKU_MODEL_REASONING_EFFORT": "high",
+        },
+    )
+    assert captured["temperature"] == 0.2
+    assert captured["reasoning_effort"] == "high"
 
 
 def test_max_retries_from_env(captured_build, tmp_path):
@@ -134,6 +152,8 @@ def test_rate_limit_from_env(captured_build, tmp_path):
         ({"DOKU_MODEL_BURST": "5"}, "DOKU_MODEL_BURST requires DOKU_MODEL_RPS to be set."),
         ({"DOKU_MODEL_MAX_RETRIES": "-1"}, "DOKU_MODEL_MAX_RETRIES must be a non-negative integer, got '-1'."),
         ({"DOKU_MODEL_MAX_RETRIES": "many"}, "DOKU_MODEL_MAX_RETRIES must be a non-negative integer, got 'many'."),
+        ({"DOKU_MODEL_TEMPERATURE": "hot"}, "DOKU_MODEL_TEMPERATURE must be a non-negative finite number, got 'hot'."),
+        ({"DOKU_MODEL_TEMPERATURE": "-0.1"}, "DOKU_MODEL_TEMPERATURE must be a non-negative finite number, got '-0.1'."),
     ],
 )
 def test_stops_on_invalid_rate_limit(captured_build, tmp_path, env, message):

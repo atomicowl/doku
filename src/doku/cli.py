@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import math
 from pathlib import Path
 
 import typer
@@ -23,9 +24,12 @@ load_dotenv(find_dotenv(usecwd=True))
 app = typer.Typer(add_completion=False)
 
 
-def _parse_model_tuning(errors: list[str]) -> tuple[float | None, int, int | None]:
+def _parse_model_tuning(
+    errors: list[str],
+) -> tuple[float | None, int, int | None, float | None, str | None]:
     """Optional model tuning from DOKU_MODEL_RPS / DOKU_MODEL_BURST /
-    DOKU_MODEL_MAX_RETRIES.
+    DOKU_MODEL_MAX_RETRIES / DOKU_MODEL_TEMPERATURE /
+    DOKU_MODEL_REASONING_EFFORT.
 
     Unset means no rate limiting / the provider's own retry default. Invalid
     values are reported into `errors` (same stop-with-a-clear-message
@@ -34,9 +38,12 @@ def _parse_model_tuning(errors: list[str]) -> tuple[float | None, int, int | Non
     rps_raw = os.environ.get("DOKU_MODEL_RPS")
     burst_raw = os.environ.get("DOKU_MODEL_BURST")
     retries_raw = os.environ.get("DOKU_MODEL_MAX_RETRIES")
+    temperature_raw = os.environ.get("DOKU_MODEL_TEMPERATURE")
+    reasoning_effort = os.environ.get("DOKU_MODEL_REASONING_EFFORT") or None
     model_rps: float | None = None
     model_burst = 1
     max_retries: int | None = None
+    temperature: float | None = None
     if rps_raw:
         try:
             model_rps = float(rps_raw)
@@ -65,7 +72,22 @@ def _parse_model_tuning(errors: list[str]) -> tuple[float | None, int, int | Non
                 f"DOKU_MODEL_MAX_RETRIES must be a non-negative integer, got {retries_raw!r}."
             )
             max_retries = None
-    return model_rps, model_burst, max_retries
+    if temperature_raw:
+        try:
+            temperature = float(temperature_raw)
+        except ValueError:
+            temperature = -1.0
+        if temperature < 0 or not math.isfinite(temperature):
+            errors.append(
+                "DOKU_MODEL_TEMPERATURE must be a non-negative finite number, "
+                f"got {temperature_raw!r}."
+            )
+            temperature = None
+    if reasoning_effort is not None:
+        reasoning_effort = reasoning_effort.strip()
+        if not reasoning_effort:
+            reasoning_effort = None
+    return model_rps, model_burst, max_retries, temperature, reasoning_effort
 
 
 def _echo(message: str) -> None:
@@ -94,7 +116,9 @@ def analyze(
     api_base = os.environ.get("DOKU_API_BASE")
     missing = [name for name, value in [("DOKU_API_KEY", api_key), ("DOKU_API_BASE", api_base)] if not value]
     errors = []
-    model_rps, model_burst, max_retries = _parse_model_tuning(errors)
+    model_rps, model_burst, max_retries, temperature, reasoning_effort = (
+        _parse_model_tuning(errors)
+    )
     if missing:
         errors.append(
             f"Missing required environment variable(s): {', '.join(missing)}.\n"
@@ -138,6 +162,8 @@ def analyze(
         model_rps=model_rps,
         model_burst=model_burst,
         max_retries=max_retries,
+        temperature=temperature,
+        reasoning_effort=reasoning_effort,
     )
     # Total is unknown up front: the orchestrator's discovery subagents find
     # the candidates during the run, so the display counts without a bar cap.

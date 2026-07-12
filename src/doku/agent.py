@@ -161,6 +161,8 @@ def _resolve_model(
     model_rps: float | None = None,
     model_burst: int = 1,
     max_retries: int | None = None,
+    temperature: float | None = None,
+    reasoning_effort: str | None = None,
 ):
     """Build the chat model with explicit credentials (no provider env-var
     fallbacks), keeping deepagents' provider-profile kwargs (e.g. OpenRouter
@@ -189,6 +191,13 @@ def _resolve_model(
         )
     if max_retries is not None:
         kwargs["max_retries"] = max_retries
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    if reasoning_effort is not None:
+        if model.startswith("openrouter:"):
+            kwargs["reasoning"] = {"effort": reasoning_effort}
+        else:
+            kwargs["reasoning_effort"] = reasoning_effort
     return init_chat_model(model, **kwargs)
 
 
@@ -204,6 +213,8 @@ def build_orchestrator(
     model_rps: float | None = None,
     model_burst: int = 1,
     max_retries: int | None = None,
+    temperature: float | None = None,
+    reasoning_effort: str | None = None,
     interpreter_timeout: float = DEFAULT_INTERPRETER_TIMEOUT_SECONDS,
     agents_dir: Path = _AGENTS_DIR,
 ):
@@ -249,7 +260,8 @@ def build_orchestrator(
 
     return create_deep_agent(
         model=_resolve_model(
-            model, api_key, api_base, chat_completions, model_rps, model_burst, max_retries
+            model, api_key, api_base, chat_completions, model_rps, model_burst,
+            max_retries, temperature, reasoning_effort
         ),
         system_prompt=orchestrator_prompt,
         subagents=subagents,
@@ -279,6 +291,8 @@ def build_workflow_agent(
     model_rps: float | None = None,
     model_burst: int = 1,
     max_retries: int | None = None,
+    temperature: float | None = None,
+    reasoning_effort: str | None = None,
     interpreter_timeout: float = DEFAULT_INTERPRETER_TIMEOUT_SECONDS,
 ):
     """Build a task-agnostic workflow orchestrator.
@@ -315,7 +329,8 @@ def build_workflow_agent(
     )
     return create_deep_agent(
         model=_resolve_model(
-            model, api_key, api_base, chat_completions, model_rps, model_burst, max_retries
+            model, api_key, api_base, chat_completions, model_rps, model_burst,
+            max_retries, temperature, reasoning_effort
         ),
         system_prompt=system_prompt,
         subagents=selected,

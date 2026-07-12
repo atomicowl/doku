@@ -213,6 +213,25 @@ def test_max_retries_keeps_provider_default_when_unset():
     assert model.max_retries == 2  # ChatOpenRouter's own default
 
 
+def test_temperature_and_reasoning_effort_for_openrouter():
+    model = _resolve_model(
+        "openrouter:z-ai/glm-5.2",
+        "k",
+        "https://x/api/v1",
+        temperature=0.2,
+        reasoning_effort="high",
+    )
+    assert model.temperature == 0.2
+    assert model.reasoning == {"effort": "high"}
+
+
+def test_reasoning_effort_for_openai():
+    model = _resolve_model(
+        "openai:gpt-5", "k", "https://x/v1", reasoning_effort="medium"
+    )
+    assert model.reasoning_effort == "medium"
+
+
 def test_fill_orchestrator_prompt_resolves_all_placeholders():
     template = (
         "batch __CONCURRENCY__\n__DISCOVERERS_LIST__\n"
