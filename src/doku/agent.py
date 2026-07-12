@@ -9,6 +9,7 @@ agent in `agents/orchestrator/`, one folder per subagent in
 
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -74,13 +75,33 @@ def _skill_mounts(
     return routes, sources
 
 
-def _load_subagents(agents_dir: Path) -> tuple[list[SubAgent], dict[str, FilesystemBackend]]:
+_ROLES = ("discoverer", "documenter")
+
+
+def _load_subagents(
+    agents_dir: Path,
+) -> tuple[list[SubAgent], dict[str, FilesystemBackend], dict[str, str]]:
+    """Load every subagent folder; returns (subagents, skill routes, roles).
+
+    `roles` maps subagent name -> its config's `role` ("discoverer" agents
+    are dispatched in phase 1, the "documenter" in phase 2 — see
+    `_fill_orchestrator_prompt`), so dropping a new folder in is all it takes
+    to extend a run.
+    """
     subagents: list[SubAgent] = []
     routes: dict[str, FilesystemBackend] = {}
+    roles: dict[str, str] = {}
     for agent_dir in sorted((agents_dir / "subagents").iterdir()):
         if not (agent_dir / "config.toml").is_file():
             continue
         config, prompt = _load_agent(agent_dir)
+        role = config.get("role")
+        if role not in _ROLES:
+            raise ValueError(
+                f"subagent '{config['name']}' ({agent_dir}) must declare role = "
+                f"{' | '.join(_ROLES)}, got {role!r}"
+            )
+        roles[config["name"]] = role
         skill_routes, skill_sources = _skill_mounts(config["name"], agent_dir, config)
         routes.update(skill_routes)
         subagent: SubAgent = {
@@ -94,7 +115,30 @@ def _load_subagents(agents_dir: Path) -> tuple[list[SubAgent], dict[str, Filesys
         if "response_format" in config:
             subagent["response_format"] = getattr(models, config["response_format"])
         subagents.append(subagent)
-    return subagents, routes
+    return subagents, routes, roles
+
+
+def _fill_orchestrator_prompt(
+    template: str, *, concurrency: int, discoverers: list[SubAgent], documenter: str
+) -> str:
+    """Resolve the orchestrator template against the subagents on disk, so
+    the run flow is derived from the folders rather than hardcoded."""
+    bullets = "\n".join(
+        f"- `{d['name']}` — {' '.join(d['description'].split())}" for d in discoverers
+    )
+    dispatch_list = json.dumps(
+        [
+            {"subagentType": d["name"], "label": f"discover-{d['name']}"}
+            for d in discoverers
+        ],
+        indent=2,
+    )
+    return (
+        template.replace("__CONCURRENCY__", str(concurrency))
+        .replace("__DISCOVERERS_LIST__", bullets)
+        .replace("__DISCOVERERS_JS__", dispatch_list)
+        .replace("__DOCUMENTER__", documenter)
+    )
 
 
 def _resolve_model(
@@ -162,12 +206,27 @@ def build_orchestrator(
     Agents that declare `skills` in their config.toml additionally get their
     skill source dirs mounted read-only under /skills/<agent-name>/.
     """
-    orchestrator_config, orchestrator_prompt = _load_agent(agents_dir / "orchestrator")
-    orchestrator_prompt = orchestrator_prompt.replace("__CONCURRENCY__", str(concurrency))
+    orchestrator_config, orchestrator_template = _load_agent(agents_dir / "orchestrator")
     orchestrator_routes, orchestrator_skills = _skill_mounts(
         orchestrator_config["name"], agents_dir / "orchestrator", orchestrator_config
     )
-    subagents, subagent_routes = _load_subagents(agents_dir)
+    subagents, subagent_routes, roles = _load_subagents(agents_dir)
+
+    discoverers = [s for s in subagents if roles[s["name"]] == "discoverer"]
+    documenters = [s["name"] for s in subagents if roles[s["name"]] == "documenter"]
+    if not discoverers:
+        raise ValueError(f"no subagent with role = \"discoverer\" found under {agents_dir}")
+    if len(documenters) != 1:
+        raise ValueError(
+            f"exactly one subagent with role = \"documenter\" is required, "
+            f"found {len(documenters)}: {documenters}"
+        )
+    orchestrator_prompt = _fill_orchestrator_prompt(
+        orchestrator_template,
+        concurrency=concurrency,
+        discoverers=discoverers,
+        documenter=documenters[0],
+    )
 
     repo_backend = FilesystemBackend(root_dir=str(repo_path), virtual_mode=True)
     docs_backend = FilesystemBackend(root_dir=str(docs_dir), virtual_mode=True)
@@ -223,10 +282,9 @@ def invoke_orchestrator(agent, display: Any | None = None):
             {
                 "role": "user",
                 "content": (
-                    "Discover every entrypoint (REST APIs, SOAP APIs, Kafka "
-                    "consumers) in the Java/Kotlin codebase mounted at /repo "
-                    "using the discovery subagents, then document every "
-                    "discovered candidate, as instructed."
+                    "Run every discovery subagent over the codebase mounted "
+                    "at /repo, then document every discovered item, as "
+                    "instructed."
                 ),
             }
         ]

@@ -1,6 +1,7 @@
 name = "entrypoint-documenter"
-description = """Given one entrypoint candidate (type, class/method, file:line, \
-metadata), reads the code under /repo and returns a structured EntrypointDoc: \
+role = "documenter"
+description = """Given one discovered item (kind, name, file:line, metadata), \
+reads the code under /repo and returns a structured EntrypointDoc: \
 input/output model, mermaid flow graph, and external dependencies."""
 
 # Pydantic model from doku.models the subagent's final answer is coerced into.

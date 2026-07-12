@@ -20,11 +20,11 @@ Markers to search for (Java and Kotlin use the same annotations):
   `@WebMethod(exclude = true)`. A `@WebService(endpointInterface = ...)`
   implementation class is the entrypoint; use the implementation's file/line.
 
-One result entry per handler **method** (not per class): `type` = `"SOAP"`,
-`file` (repo-relative, no `/repo/` prefix), `line` (1-based, of the method
-declaration), `class_name`, `method_name`, and `meta` with what you learned:
-`namespace` + `local_part` for Spring-WS, `soap_action` if declared, service
-name/`operation_name` for JAX-WS.
+One result entry per handler **method** (not per class): `kind` = `"SOAP"`,
+`name` = `ClassName.methodName`, `file` (repo-relative, no `/repo/` prefix),
+`line` (1-based, of the method declaration), and `meta` with what you
+learned: `namespace` + `local_part` for Spring-WS, `soap_action` if declared,
+service name/`operation_name` for JAX-WS.
 
 Ground every entry in code you actually read — never infer an operation from
 a file name, a WSDL alone, or a comment. If the repo has no SOAP operations,

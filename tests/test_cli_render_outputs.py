@@ -5,11 +5,10 @@ from doku.state import StateLayout, read_manifest, render_outputs
 SLUG = "rest-OrderController-createOrder"
 
 MANIFEST_ENTRY = {
-    "type": "REST",
+    "kind": "REST",
+    "name": "OrderController.createOrder",
     "file": "OrderController.java",
     "line": 20,
-    "class_name": "OrderController",
-    "method_name": "createOrder",
     "meta": {},
     "slug": SLUG,
 }
@@ -96,4 +95,4 @@ def test_read_manifest_derives_missing_slug(tmp_path):
 
     (parsed,) = read_manifest(layout)
 
-    assert parsed["slug"] == "rest-ordercontroller-createorder"
+    assert parsed["slug"] == "rest-ordercontroller-createorder"  # kind-name, dots sanitized

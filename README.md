@@ -148,12 +148,15 @@ docs/
 
 ## v1 scope
 
-The discovery subagents cover Java/Kotlin: Spring MVC/WebFlux and JAX-RS
-(REST), Spring-WS and JAX-WS/CXF (SOAP), `@KafkaListener`/`@KafkaHandler`
-plus manual consumer poll loops (Kafka). Each lives in its own folder under
-`src/doku/agents/subagents/` — add a new folder with a `config.toml` and
-`prompt.md` (and dispatch it from the orchestrator prompt) to cover another
-entrypoint kind or framework.
+The shipped discovery subagents cover Java/Kotlin: Spring MVC/WebFlux and
+JAX-RS (REST), Spring-WS and JAX-WS/CXF (SOAP), `@KafkaListener`/
+`@KafkaHandler` plus manual consumer poll loops (Kafka). The pipeline itself
+is task-agnostic: each subagent lives in its own folder under
+`src/doku/agents/subagents/` with a `role` (`discoverer` or `documenter`) in
+its `config.toml`, and the orchestrator's flow is derived from the folders on
+disk. Dropping in a new discoverer folder (say, for scheduled jobs or gRPC
+services) is the whole job — it gets dispatched automatically, no code or
+prompt edits.
 
 The earlier deterministic tree-sitter detectors remain in
 `src/doku/detectors/` but are no longer wired into the CLI.

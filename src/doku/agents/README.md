@@ -2,9 +2,26 @@
 
 Each agent lives in its own folder with two files:
 
-- `config.toml` — name, description, `response_format` (a model name from
-  `doku.models`), filesystem `permissions`, and optional `skills`.
+- `config.toml` — name, `role` (subagents only), description,
+  `response_format` (a model name from `doku.models`), filesystem
+  `permissions`, and optional `skills`.
 - `prompt.md` — the agent's system prompt.
+
+## Roles
+
+Every subagent declares a `role`, and the orchestrator's run flow is derived
+from the folders on disk — no code or prompt edits needed to add an agent:
+
+- `role = "discoverer"` — dispatched in parallel in phase 1. Returns
+  `DiscoveredItems`: a list of `{kind, name, file, line, meta}` items. The
+  pipeline is task-agnostic — items can be REST endpoints, Kafka consumers,
+  cron jobs, feature flags, anything worth documenting.
+- `role = "documenter"` — exactly one; dispatched once per discovered item in
+  phase 2 with the item's source inlined.
+
+The orchestrator's `prompt.md` is a template: `__DISCOVERERS_LIST__`,
+`__DISCOVERERS_JS__`, `__DOCUMENTER__`, and `__CONCURRENCY__` are filled at
+build time from the loaded subagents (see `doku.agent`).
 
 ## Skills
 

@@ -87,8 +87,7 @@ def read_manifest(layout: StateLayout) -> list[dict]:
             continue
         if not item.get("slug"):
             derived = "-".join(
-                str(item.get(key, "unknown"))
-                for key in ("type", "class_name", "method_name")
+                str(item.get(key, "unknown")) for key in ("kind", "name")
             ).lower()
             item["slug"] = "".join(
                 ch if ch.isalnum() or ch in "_-" else "-" for ch in derived

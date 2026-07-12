@@ -1,10 +1,11 @@
 name = "kafka-consumer-extractor"
+role = "discoverer"
 description = """Scans the Java/Kotlin codebase under /repo and returns the \
 complete list of Kafka consumers (@KafkaListener/@KafkaHandler, manual \
-consumer poll loops) as structured DiscoveredEntrypoints."""
+consumer poll loops) as structured DiscoveredItems."""
 
 # Pydantic model from doku.models the subagent's final answer is coerced into.
-response_format = "DiscoveredEntrypoints"
+response_format = "DiscoveredItems"
 
 # "/repo" itself is listed too: the "/repo/**" glob matches files under the
 # mount but not the mount point, which would deny `ls` on the repo root — the

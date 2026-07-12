@@ -8,6 +8,7 @@ from deepagents.middleware.skills import _list_skills
 
 from doku.agent import _AGENTS_DIR
 from doku.agent import (
+    _fill_orchestrator_prompt,
     _load_agent,
     _load_subagents,
     _permissions,
@@ -44,7 +45,8 @@ def make_agents_dir(tmp_path: Path, *, with_skills: bool) -> Path:
     doc.mkdir(parents=True)
     (doc / "config.toml").write_text(
         'name = "documenter"\n'
-        'description = "Documents one entrypoint."\n'
+        'role = "documenter"\n'
+        'description = "Documents one item."\n'
         'response_format = "EntrypointDoc"\n'
         + ('skills = ["skills"]\n' if with_skills else "")
         + '[[permissions]]\n'
@@ -52,15 +54,25 @@ def make_agents_dir(tmp_path: Path, *, with_skills: bool) -> Path:
         'paths = ["/**"]\n'
         'mode = "deny"\n'
     )
-    (doc / "prompt.md").write_text("Document the entrypoint.")
+    (doc / "prompt.md").write_text("Document the item.")
     if with_skills:
         (doc / "skills" / "flow-graphs").mkdir(parents=True)
         (doc / "skills" / "flow-graphs" / "SKILL.md").write_text(SKILL_MD)
+
+    disc = agents / "subagents" / "finder"
+    disc.mkdir(parents=True)
+    (disc / "config.toml").write_text(
+        'name = "finder"\n'
+        'role = "discoverer"\n'
+        'description = "Finds items."\n'
+        'response_format = "DiscoveredItems"\n'
+    )
+    (disc / "prompt.md").write_text("Find the items.")
     return agents
 
 
 def test_shipped_agents_include_discoverers_and_documenter():
-    subagents, _routes = _load_subagents(_AGENTS_DIR)
+    subagents, _routes, roles = _load_subagents(_AGENTS_DIR)
     by_name = {s["name"]: s for s in subagents}
     assert set(by_name) == {
         "entrypoint-documenter",
@@ -69,16 +81,18 @@ def test_shipped_agents_include_discoverers_and_documenter():
         "soap-api-extractor",
     }
     for name in ("rest-api-extractor", "soap-api-extractor", "kafka-consumer-extractor"):
-        assert by_name[name]["response_format"].__name__ == "DiscoveredEntrypoints"
+        assert roles[name] == "discoverer"
+        assert by_name[name]["response_format"].__name__ == "DiscoveredItems"
+    assert roles["entrypoint-documenter"] == "documenter"
     assert by_name["entrypoint-documenter"]["response_format"].__name__ == "EntrypointDoc"
 
 
 def test_load_subagents_without_skills(tmp_path):
     agents_dir = make_agents_dir(tmp_path, with_skills=False)
-    subagents, routes = _load_subagents(agents_dir)
+    subagents, routes, roles = _load_subagents(agents_dir)
     assert routes == {}
-    (subagent,) = subagents
-    assert subagent["name"] == "documenter"
+    assert roles == {"documenter": "documenter", "finder": "discoverer"}
+    subagent = next(s for s in subagents if s["name"] == "documenter")
     assert "skills" not in subagent
     assert subagent["response_format"].__name__ == "EntrypointDoc"
     (deny,) = subagent["permissions"]
@@ -87,8 +101,8 @@ def test_load_subagents_without_skills(tmp_path):
 
 def test_load_subagents_with_skills(tmp_path):
     agents_dir = make_agents_dir(tmp_path, with_skills=True)
-    subagents, routes = _load_subagents(agents_dir)
-    (subagent,) = subagents
+    subagents, routes, _roles = _load_subagents(agents_dir)
+    subagent = next(s for s in subagents if s["name"] == "documenter")
     assert subagent["skills"] == ["/skills/documenter/skills"]
     assert list(routes) == ["/skills/documenter/skills/"]
     # Auto-granted read (and deny-write) on the mount come first, so they win
@@ -120,7 +134,7 @@ def test_skills_discoverable_through_composite_backend(tmp_path):
     """The mounted source must be listable/readable the way SkillsMiddleware
     does it (backend ls + download of each <skill>/SKILL.md)."""
     agents_dir = make_agents_dir(tmp_path, with_skills=True)
-    _subagents, routes = _load_subagents(agents_dir)
+    _subagents, routes, _roles = _load_subagents(agents_dir)
     backend = CompositeBackend(
         default=FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True),
         routes=routes,
@@ -171,6 +185,61 @@ def test_max_retries_set_when_configured():
 def test_max_retries_keeps_provider_default_when_unset():
     model = _resolve_model("openrouter:z-ai/glm-5.2", "k", "https://x/api/v1")
     assert model.max_retries == 2  # ChatOpenRouter's own default
+
+
+def test_fill_orchestrator_prompt_resolves_all_placeholders():
+    template = (
+        "batch __CONCURRENCY__\n__DISCOVERERS_LIST__\n"
+        "const discoverers = __DISCOVERERS_JS__;\nsubagentType: \"__DOCUMENTER__\""
+    )
+    discoverers = [
+        {"name": "finder-a", "description": "Finds  A\nitems."},
+        {"name": "finder-b", "description": "Finds B items."},
+    ]
+    filled = _fill_orchestrator_prompt(
+        template, concurrency=4, discoverers=discoverers, documenter="documenter"
+    )
+    assert "batch 4" in filled
+    assert "- `finder-a` — Finds A items." in filled  # whitespace normalized
+    assert '"subagentType": "finder-a"' in filled
+    assert '"label": "discover-finder-b"' in filled
+    assert 'subagentType: "documenter"' in filled
+    assert "__" not in filled  # no placeholder left behind
+
+
+def test_missing_role_raises(tmp_path):
+    agents_dir = make_agents_dir(tmp_path, with_skills=False)
+    config_path = agents_dir / "subagents" / "finder" / "config.toml"
+    config_path.write_text(config_path.read_text().replace('role = "discoverer"\n', ""))
+    with pytest.raises(ValueError, match="finder.*must declare role"):
+        _load_subagents(agents_dir)
+
+
+def test_build_requires_a_discoverer_and_one_documenter(tmp_path):
+    agents_dir = make_agents_dir(tmp_path, with_skills=False)
+    build = lambda: build_orchestrator(  # noqa: E731
+        repo_path=tmp_path,
+        docs_dir=tmp_path / "docs",
+        model="openrouter:m",
+        api_key="k",
+        api_base="https://x/v1",
+        concurrency=2,
+        agents_dir=agents_dir,
+    )
+
+    config_path = agents_dir / "subagents" / "finder" / "config.toml"
+    original = config_path.read_text()
+    config_path.write_text(original.replace('role = "discoverer"', 'role = "documenter"'))
+    with pytest.raises(ValueError, match="no subagent with role"):
+        build()
+
+    config_path.write_text(original)
+    doc_config = agents_dir / "subagents" / "documenter" / "config.toml"
+    doc_config.write_text(
+        doc_config.read_text().replace('role = "documenter"', 'role = "discoverer"')
+    )
+    with pytest.raises(ValueError, match="exactly one subagent"):
+        build()
 
 
 def test_build_orchestrator_with_skills(tmp_path):
