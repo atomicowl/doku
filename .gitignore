@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets — never commit API keys; .env.example is the committed template
+.env
+.env.*
+!.env.example
+
+# Tooling
+.pytest_cache/
+.idea/
