@@ -18,6 +18,8 @@ DOC_A = EntrypointDoc(
     location="OrderController.java:20",
     input_model="Path `id`, JSON body `OrderRequest`.",
     output_model="`OrderResponse` JSON or 404/402.",
+    feature_toggles=["new-checkout enables the new payment path"],
+    decision_points=["Reject when the order is missing"],
     flow_mermaid="flowchart TD\n  A --> B",
     dependencies=[
         DependencyRef(kind="database", name="orders_db", usage="load/save Order"),
@@ -45,6 +47,10 @@ def test_render_entrypoint_markdown_includes_all_sections():
     assert "OrderController.java:20" in md
     assert "```mermaid" in md
     assert "flowchart TD" in md
+    assert "## Feature toggles" in md
+    assert "new-checkout enables" in md
+    assert "## Decision points" in md
+    assert "Reject when" in md
     assert "| database | orders_db | load/save Order |" in md
 
 

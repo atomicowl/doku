@@ -1,0 +1,14 @@
+name = "decision-flow-analyzer"
+description = "Builds a grounded decision-flow diagram and lists branch points for one entrypoint."
+output = "structured"
+response_model = "models:DecisionFlowAnalysis"
+
+[[permissions]]
+operations = ["read"]
+paths = ["/repo", "/repo/**"]
+mode = "allow"
+
+[[permissions]]
+operations = ["read", "write"]
+paths = ["/**"]
+mode = "deny"

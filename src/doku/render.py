@@ -32,6 +32,24 @@ def render_entrypoint_markdown(slug: str, doc: EntrypointDoc) -> str:
         "",
         doc.output_model.strip(),
         "",
+        "## Feature toggles",
+        "",
+    ]
+    if doc.feature_toggles:
+        lines += [f"- {toggle}" for toggle in doc.feature_toggles]
+    else:
+        lines.append("_None found._")
+    lines += [
+        "",
+        "## Decision points",
+        "",
+    ]
+    if doc.decision_points:
+        lines += [f"- {decision}" for decision in doc.decision_points]
+    else:
+        lines.append("_None found._")
+    lines += [
+        "",
         "## Flow",
         "",
         "```mermaid",

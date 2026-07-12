@@ -5,6 +5,9 @@ subagents = [
   "rest-api-extractor",
   "kafka-consumer-extractor",
   "soap-api-extractor",
+  "decision-flow-analyzer",
+  "feature-toggle-analyzer",
+  "external-dependency-analyzer",
   "entrypoint-documenter",
 ]
 output = "text"
@@ -12,6 +15,9 @@ finalizer = "finalize:finalize"
 
 [prompt_variables]
 DOCUMENTER = "entrypoint-documenter"
+FLOW_ANALYZER = "decision-flow-analyzer"
+TOGGLE_ANALYZER = "feature-toggle-analyzer"
+DEPENDENCY_ANALYZER = "external-dependency-analyzer"
 DISCOVERERS_LIST = """- `rest-api-extractor` — Finds REST endpoints.
 - `kafka-consumer-extractor` — Finds Kafka consumers.
 - `soap-api-extractor` — Finds SOAP operations."""

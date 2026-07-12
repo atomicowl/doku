@@ -40,14 +40,18 @@ Normalize the agent-specific records into candidate manifest entries with
 For **every single candidate in the manifest, with no exceptions**:
 
 1. Read the candidate's source file from `/repo/<file>`, strip the line-number
-   formatting (below), cap it at 20000 characters, and dispatch the
-   `__DOCUMENTER__` subagent with that source **inline in the task
-   description** (see sketch) so it has the real code in front of it
+   formatting (below), and cap it at 20000 characters.
+2. Dispatch `__FLOW_ANALYZER__`, `__TOGGLE_ANALYZER__`, and
+   `__DEPENDENCY_ANALYZER__` in parallel with that source inline. A specialist
+   failure must not prevent the other specialists or final documentation.
+3. Dispatch the `__DOCUMENTER__` subagent with the source and all successful
+   specialist results **inline in the task description** (see sketch) so it
+   has the real code and grounded analysis in front of it
    immediately — do not rely on it to fetch the file itself; models sometimes
    skip that and answer from guesswork, which produces confidently wrong
    documentation. Always pass `label: c.slug`.
-2. Persist its structured result as JSON to `/_state/results/<slug>.json`.
-3. If a dispatch fails, record `{"slug": ..., "error": ...}` and continue with
+4. Persist its structured result as JSON to `/_state/results/<slug>.json`.
+5. If the documenter fails, record `{"slug": ..., "error": ...}` and continue with
    the rest — one failure must never stop the run.
 
 ## Tool-calling rules (both phases)
@@ -171,10 +175,30 @@ for (let i = 0; i < candidates.length; i += BATCH) {
   const outcomes = await Promise.allSettled(batch.map(async (c) => {
     const raw = await tools.readFile({ file_path: `/repo/${c.file}`, limit: 100000 });
     const source = stripLineNumbers(raw).slice(0, 20000);
+    const baseDescription = `Analyze this ${c.kind} item: ${c.name}, ` +
+      `file /repo/${c.file} around line ${c.line}. ` +
+      `Metadata: ${JSON.stringify(c.meta)}.\n\n` +
+      `Full source of ${c.file}:\n\`\`\`\n${source}\n\`\`\``;
+    const specialistSpecs = [
+      { type: "__FLOW_ANALYZER__", label: `${c.slug}-flow`, key: "decision_flow" },
+      { type: "__TOGGLE_ANALYZER__", label: `${c.slug}-toggles`, key: "feature_toggles" },
+      { type: "__DEPENDENCY_ANALYZER__", label: `${c.slug}-dependencies`, key: "external_dependencies" },
+    ];
+    const specialistOutcomes = await Promise.allSettled(specialistSpecs.map((s) =>
+      task({ description: baseDescription, subagentType: s.type, label: s.label })
+    ));
+    const analyses = {};
+    specialistOutcomes.forEach((outcome, index) => {
+      const spec = specialistSpecs[index];
+      analyses[spec.key] = outcome.status === "fulfilled"
+        ? parseTaskResult(outcome.value)
+        : { unavailable: String(outcome.reason) };
+    });
     return task({
       description: `Document this ${c.kind} item: ${c.name}, ` +
         `file /repo/${c.file} around line ${c.line}. ` +
         `Metadata: ${JSON.stringify(c.meta)}. Location to report: "${c.file}:${c.line}".\n\n` +
+        `Specialist analyses:\n${JSON.stringify(analyses, null, 2)}\n\n` +
         `Full source of ${c.file}:\n\`\`\`\n${source}\n\`\`\``,
       subagentType: "__DOCUMENTER__",
       label: c.slug,

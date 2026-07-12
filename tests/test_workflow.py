@@ -72,3 +72,18 @@ def test_global_main_prompt_is_prepended_to_workflow_prompt(tmp_path):
     )
 
     assert prompt == "Follow company policy.\n\nRun with 4 workers."
+
+
+def test_bundled_documentation_workflow_includes_specialists():
+    root = Path(__file__).parents[1]
+    workflow = load_workflow(root / "workflows/document_codebase")
+    assert {
+        "decision-flow-analyzer",
+        "feature-toggle-analyzer",
+        "external-dependency-analyzer",
+        "entrypoint-documenter",
+    } <= set(workflow.config.subagents)
+    prompt = workflow.prompt(CONCURRENCY=2)
+    assert 'type: "decision-flow-analyzer"' in prompt
+    assert 'type: "feature-toggle-analyzer"' in prompt
+    assert 'type: "external-dependency-analyzer"' in prompt
