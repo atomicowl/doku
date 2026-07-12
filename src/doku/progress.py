@@ -37,24 +37,42 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from rich import box
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
     TaskID,
     TextColumn,
     TimeElapsedColumn,
 )
+from rich.rule import Rule
 from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
+
+# -- Agent Console design palette (claude.ai/design "Agent Console.dc.html",
+# oklch values converted to sRGB hex) ----------------------------------------
+ACCENT = "#5ad664"  # oklch(78% .19 145) — running status, prompt name, cursor
+NAME = "#c4e1c4"  # oklch(88% .05 145) — subagent names
+MAIN_NAME = "#c6e9c6"  # oklch(90% .06 145) — main agent name
+DONE = "#528a54"  # oklch(58% .10 145) — done status
+ERROR = "#f5642b"  # oklch(68% .19 40) — error status / error text
+GRAY_STATS = "#65696f"  # oklch(52% .01 250) — stats line
+GRAY_HEAD = "#5f6469"  # oklch(50% .01 250) — table header
+GRAY_PROMPT = "#6d7277"  # oklch(55% .01 250) — prompt arrow, row task text
+GRAY_CELL = "#767b80"  # oklch(58% .01 250) — tokens/time cells
+GRAY_TASK = "#7c8186"  # oklch(60% .01 250) — main agent task text
+GRAY_TS = "#44484d"  # oklch(40% .01 250) — type tags
+DIVIDER = "#2a2e33"  # oklch(30% .01 250) — divider rule
+BORDER = "#1c2024"  # oklch(24% .01 250) — header underline
 
 #: how many leading lines of the orchestrator's `eval` code to log
 MAX_EVAL_LINES = 60
@@ -89,6 +107,20 @@ def _clip(text: str, n: int) -> str:
     return text if len(text) <= n else text[: n - 1] + "…"
 
 
+def _fmt_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "—"
+    whole = int(seconds)
+    minutes, secs = divmod(whole, 60)
+    return f"{minutes}m{secs:02d}s" if minutes else f"{secs}s"
+
+
+def _fmt_tokens(tokens: int) -> str:
+    if tokens <= 0:
+        return "—"
+    return f"{tokens / 1000:.1f}k" if tokens >= 1000 else str(tokens)
+
+
 @dataclass
 class _Dispatch:
     """One in-flight `task()` dispatch, keyed by its lifecycle-event id."""
@@ -98,6 +130,7 @@ class _Dispatch:
     description: str
     namespace: tuple | None = None
     tool_calls: int = 0
+    tokens: int = 0
     row: TaskID | None = None  # its row in the dashboard's "running" list
 
 
@@ -134,17 +167,11 @@ class RunDisplay:
                 file=self._log_file, width=100, force_terminal=False, highlight=False
             )
 
-        # dashboard widgets (only rendered when the console is a terminal)
+        # dashboard widgets (only rendered when the console is a terminal).
+        # `_running` renders nothing itself anymore — it stays the store of
+        # in-flight rows (descriptions, activity fields, elapsed time) that
+        # `_render` reads to draw the Agent Console table.
         self._live = None
-        self._overall = Progress(
-            SpinnerColumn(),
-            TextColumn("[bold]documenting[/bold]"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=self.console,
-        )
-        self._overall_task = self._overall.add_task("", total=total)
         self._running = Progress(
             SpinnerColumn(),
             TextColumn("{task.description}", style="bold"),
@@ -153,7 +180,10 @@ class RunDisplay:
             console=self.console,
         )
         self._orchestrator_status = Text("waiting for orchestrator…", style="dim italic")
-        self._recent: deque[Text] = deque(maxlen=RECENT_FINISHES)
+        self._recent: deque[dict[str, Any]] = deque(maxlen=RECENT_FINISHES)
+        self._started_at = time.monotonic()
+        self.tokens = 0  # best-effort total across every agent, from usage_metadata
+        self._main_tokens = 0  # the orchestrator's own share
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -177,27 +207,80 @@ class RunDisplay:
             self._log_file = None
             self._log = None
 
-    # -- dashboard ----------------------------------------------------------
+    # -- dashboard (Agent Console design) ------------------------------------
 
-    def _render(self) -> Panel:
-        sections: list[Any] = [self._overall, Text()]
-        line = Text("  orchestrator │ ", style="bold")
-        line.append_text(self._orchestrator_status)
-        sections.append(line)
-        if self._running.tasks:
-            sections.append(Text())
-            sections.append(Text("  running:", style="bold"))
-            sections.append(self._running)
-        if self._recent:
-            sections.append(Text())
-            sections.append(Text("  recent:", style="bold"))
-            sections.extend(self._recent)
-        return Panel(
-            Group(*sections),
-            title="doku — documenting entrypoints",
-            subtitle=f"full log: {self.log_path}" if self.log_path else None,
-            subtitle_align="left",
-            border_style="cyan",
+    def _render(self) -> Group:
+        # prompt / global status
+        header = Text()
+        header.append("➜ ", style=GRAY_PROMPT)
+        header.append("doku", style=f"bold {ACCENT}")
+        header.append(" — documenting entrypoints", style=GRAY_TASK)
+
+        running = len(self._running.tasks)
+        stats = Text(style=GRAY_STATS)
+        stats.append(f"tokens {_fmt_tokens(self.tokens)}")
+        stats.append("  ·  ")
+        stats.append(f"elapsed {_fmt_duration(time.monotonic() - self._started_at)}")
+        stats.append("  ·  ")
+        stats.append(f"{running} running")
+        stats.append("  ·  ")
+        stats.append(f"{self.completed} done")
+        stats.append("  ·  ")
+        stats.append(f"{self.failed} error", style=ERROR if self.failed else GRAY_STATS)
+
+        # main agent row + subagent table, one grid like the design's console
+        table = Table(
+            box=box.SIMPLE_HEAD,
+            border_style=BORDER,
+            header_style=GRAY_HEAD,
+            expand=True,
+            padding=(0, 1),
+            pad_edge=False,
+        )
+        table.add_column("SUBAGENT", ratio=2, no_wrap=True)
+        table.add_column("STATUS", width=8)
+        table.add_column("TOKENS", width=7)
+        table.add_column("TIME", width=7)
+        table.add_column("TASK", ratio=3, no_wrap=True)
+        table.add_row(
+            Text("orchestrator", style=f"bold {MAIN_NAME}"),
+            Text("running", style=ACCENT),
+            Text(_fmt_tokens(self._main_tokens), style=GRAY_CELL),
+            Text(_fmt_duration(time.monotonic() - self._started_at), style=GRAY_CELL),
+            Text(_clip(self._orchestrator_status.plain, 90), style=GRAY_TASK),
+            end_section=True,
+        )
+        for task in self._running.tasks:
+            dispatch = next(
+                (d for d in self._dispatches.values() if d.row == task.id), None
+            )
+            table.add_row(
+                Text(task.description, style=f"bold {NAME}"),
+                Text("running", style=ACCENT),
+                Text(_fmt_tokens(dispatch.tokens if dispatch else 0), style=GRAY_CELL),
+                Text(_fmt_duration(task.elapsed), style=GRAY_CELL),
+                Text(str(task.fields.get("activity", "")), style=GRAY_PROMPT),
+            )
+        for row in self._recent:
+            failed = row["failed"]
+            table.add_row(
+                Text(row["label"], style=NAME),
+                Text("error" if failed else "done", style=ERROR if failed else DONE),
+                Text(_fmt_tokens(row["tokens"]), style=GRAY_CELL),
+                Text(_fmt_duration(row["duration_s"]), style=GRAY_CELL),
+                Text(row["note"], style=ERROR if failed else GRAY_PROMPT),
+            )
+
+        footer = Text()
+        footer.append("➜ ", style=GRAY_PROMPT)
+        footer.append(
+            f"full log: {self.log_path}" if self.log_path else "running…",
+            style=GRAY_STATS,
+        )
+        footer.append(" ▊", style=f"blink {ACCENT}")
+
+        return Group(
+            header, stats, table, Rule(characters="─", style=DIVIDER), footer
         )
 
     def _refresh(self) -> None:
@@ -242,18 +325,28 @@ class RunDisplay:
             self.failed += 1
         else:
             self.completed += 1
-        self._overall.advance(self._overall_task)
+        duration_s = event.get("duration_ms", 0) / 1000
         line = Text("  ✗ " if failed else "  ✓ ", style="bold red" if failed else "bold green")
         line.append(dispatch.label)
         if failed:
-            line.append(f" ({event.get('duration_ms', 0) / 1000:.1f}s): ", style="dim")
+            line.append(f" ({duration_s:.1f}s): ", style="dim")
             line.append(_clip(str(event.get("error")), self._preview), style="red")
         else:
-            line.append(f" ({event.get('duration_ms', 0) / 1000:.1f}s", style="dim")
+            line.append(f" ({duration_s:.1f}s", style="dim")
             if dispatch.tool_calls:
                 line.append(f", {dispatch.tool_calls} tool call(s)", style="dim")
             line.append(")", style="dim")
-        self._recent.append(line)
+        self._recent.append(
+            {
+                "label": dispatch.label,
+                "failed": failed,
+                "tokens": dispatch.tokens,
+                "duration_s": duration_s,
+                "note": _clip(str(event.get("error")), 90)
+                if failed
+                else f"finished — {dispatch.tool_calls} tool call(s)",
+            }
+        )
         self._log_print(line)
         self._console_line(line)
         self._refresh()
@@ -339,6 +432,7 @@ class RunDisplay:
     ) -> None:
         msg_type = getattr(message, "type", None)
         if msg_type == "ai":
+            self._count_tokens(message, dispatch)
             text = text_of(getattr(message, "content", None))
             if text:
                 line = Text(indent)
@@ -393,6 +487,21 @@ class RunDisplay:
             self._orchestrator_status = Text(f"→ {name} {_clip(rendered, 60)}")
         else:
             self._set_activity(dispatch, f"→ {name} ({dispatch.tool_calls} calls)")
+
+    def _count_tokens(self, message: Any, dispatch: _Dispatch | None) -> None:
+        """Best-effort token tally from `usage_metadata` (not every provider
+        reports it; the dashboard shows — when nothing arrives)."""
+        usage = getattr(message, "usage_metadata", None)
+        if not isinstance(usage, dict):
+            return
+        total = usage.get("total_tokens") or 0
+        if not isinstance(total, int) or total <= 0:
+            return
+        self.tokens += total
+        if dispatch is None:
+            self._main_tokens += total
+        else:
+            dispatch.tokens += total
 
     def _set_activity(self, dispatch: _Dispatch | None, activity: str) -> None:
         if dispatch is not None and dispatch.row is not None:

@@ -83,20 +83,24 @@ elapsed time and its latest activity), and recent finishes (the dispatch loop
 otherwise runs inside one opaque tool call with no output until everything is
 done):
 
+The dashboard follows the Agent Console design (terminal-green on black,
+IBM-Plex-Mono-style layout):
+
 ```
-╭──────────────────── doku — documenting entrypoints ──────────────────────╮
-│ ⠧ documenting ━━━━━━━━━╺━━━━━━━━━━━  4 0:01:23                           │
-│                                                                          │
-│   orchestrator │ running dispatch loop (eval, 41 lines of JS)…           │
-│                                                                          │
-│   running:                                                               │
-│ ⠧ rest-OwnerController-showOwner          0:00:05 → read_file (2 calls)  │
-│ ⠧ rest-PetController-processCreationForm  0:00:02 Checking the repo…     │
-│                                                                          │
-│   recent:                                                                │
-│   ✓ rest-VetController-showVetList (4.2s, 2 tool call(s))                │
-│   ✗ soap-BillingEndpoint-getInvoice (2.0s): timeout                      │
-╰─ full log: docs/_state/run.log ──────────────────────────────────────────╯
+➜ doku — documenting entrypoints
+tokens 97.9k  ·  elapsed 1m23s  ·  2 running  ·  1 done  ·  1 error
+
+ SUBAGENT                         STATUS    TOKENS   TIME    TASK
+ ─────────────────────────────────────────────────────────────────────────────
+ orchestrator                     running   12.7k    1m23s   running dispatch loop (eval, 41 lines of JS)…
+
+ rest-OwnerController-showOwner   running   42.1k    5s      → read_file (2 calls)
+ kafka-OrderEvents-onMessage      running   31.5k    2s      starting…
+ soap-BillingEndpoint-getInvoice  done      18.4k    4s      finished — 2 tool call(s)
+ rest-VetController-showVetList   error     9.8k     2s      timeout
+
+───────────────────────────────────────────────────────────────────────────────
+➜ full log: docs/_state/run.log ▊
 ```
 
 The full play-by-play is written to `docs/_state/run.log` (tail -f-able while

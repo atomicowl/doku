@@ -329,5 +329,9 @@ def test_live_dashboard_on_forced_terminal(tmp_path):
         display.on_values(NS, {"messages": [_FakeHumanMessage(PROMPT)]})
         display.on_subagent_event({"phase": "complete", "id": "a1", "duration_ms": 100})
     out = console.file.getvalue()
-    assert "doku — documenting entrypoints" in out
+    # "doku" and the tagline are separately styled spans, so match each part
+    assert "doku" in out
+    assert "— documenting entrypoints" in out
     assert "rest-Foo-bar" in out
+    assert "SUBAGENT" in out  # Agent Console table header
+    assert "orchestrator" in out  # main agent row
