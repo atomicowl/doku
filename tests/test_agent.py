@@ -99,6 +99,17 @@ def test_shipped_agents_include_discoverers_and_documenter():
     assert by_name["entrypoint-documenter"]["response_format"].__name__ == "EntrypointDoc"
 
 
+def test_soap_discoverer_only_reports_server_side_endpoints():
+    prompt = (_AGENTS_DIR / "subagents/soap_api_extractor/prompt.md").read_text()
+    normalized = " ".join(prompt.split())
+
+    assert "inbound, server-side SOAP API operation" in normalized
+    assert "If the repo has SOAP clients but no exposed SOAP operations" in normalized
+    assert "@WebServiceClient" in prompt
+    assert "WebServiceTemplate" in prompt
+    assert "JaxWsProxyFactoryBean" in prompt
+
+
 def test_load_subagents_without_skills(tmp_path):
     agents_dir = make_agents_dir(tmp_path, with_skills=False)
     subagents, routes, roles = _load_subagents(agents_dir)
