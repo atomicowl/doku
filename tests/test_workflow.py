@@ -46,6 +46,16 @@ def test_discover_named_accepts_name_or_path(tmp_path):
     assert discover_named(tmp_path / "unused", str(bundled)) == bundled.resolve()
 
 
+def test_discover_named_prefers_configured_root_for_names(tmp_path, monkeypatch):
+    root = tmp_path / "definitions"
+    named = root / "security-review"
+    named.mkdir(parents=True)
+    (named / "config.toml").write_text("")
+    monkeypatch.chdir(tmp_path)
+
+    assert discover_named(root, "security-review") == named.resolve()
+
+
 def test_global_main_prompt_is_prepended_to_workflow_prompt(tmp_path):
     workflow_dir = tmp_path / "workflow"
     workflow_dir.mkdir()

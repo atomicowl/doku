@@ -27,6 +27,8 @@ def clean_env(monkeypatch):
         "DOKU_MODEL_RPS",
         "DOKU_MODEL_BURST",
         "DOKU_MODEL_MAX_RETRIES",
+        "DOKU_AGENTS_DIR",
+        "DOKU_WORKFLOWS_DIR",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -151,6 +153,20 @@ def test_credentials_are_passed_to_build(captured_build, tmp_path):
     )
     assert captured["api_key"] == CREDS["DOKU_API_KEY"]
     assert captured["api_base"] == CREDS["DOKU_API_BASE"]
+
+
+def test_agent_and_workflow_roots_from_environment(captured_build, tmp_path):
+    captured = _run(
+        captured_build,
+        [FIXTURE_REPO, "--out", str(tmp_path)],
+        env={
+            "DOKU_MODEL": "openrouter:some-model",
+            "DOKU_AGENTS_DIR": str(Path.cwd() / "agents"),
+            "DOKU_WORKFLOWS_DIR": str(Path.cwd() / "workflows"),
+        },
+    )
+    assert captured["agents_dir"] == (Path.cwd() / "agents").resolve()
+    assert captured["workflow"].config.name == "document-codebase"
 
 
 @pytest.mark.parametrize(

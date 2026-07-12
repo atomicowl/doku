@@ -18,7 +18,10 @@ def create(
     output: str = typer.Option("text", help="Output type: text or structured."),
     role: str = typer.Option("custom", help="Workflow role label."),
     model: str | None = typer.Option(None, help="Pydantic model class for structured output."),
-    agents_dir: Path = typer.Option(_AGENTS_DIR, hidden=True),
+    agents_dir: Path = typer.Option(
+        _AGENTS_DIR, "--agents-dir", envvar="DOKU_AGENTS_DIR",
+        help="Root directory containing main/ and subagents/.",
+    ),
 ) -> None:
     """Create a new subagent folder without overwriting existing files."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
@@ -70,7 +73,12 @@ def create(
 
 
 @app.command()
-def validate(agents_dir: Path = typer.Option(_AGENTS_DIR, hidden=True)) -> None:
+def validate(
+    agents_dir: Path = typer.Option(
+        _AGENTS_DIR, "--agents-dir", envvar="DOKU_AGENTS_DIR",
+        help="Root directory containing main/ and subagents/.",
+    ),
+) -> None:
     """Validate all configs, prompts, skills, names, roles, and response models."""
     errors: list[str] = []
     names: set[str] = set()

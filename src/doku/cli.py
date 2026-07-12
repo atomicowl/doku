@@ -87,6 +87,7 @@ def analyze(
     chat_completions: bool = typer.Option(False, "--chat-completions", envvar="DOKU_CHAT_COMPLETIONS", help="With openai:* models, use the plain Chat Completions API instead of the OpenAI Responses API — needed for OpenAI-compatible servers (vLLM, Ollama, gateways)."),
     workflow: str = typer.Option("document-codebase", "--workflow", "-w", help="Bundled workflow name or path to a workflow directory."),
     agents_dir: Path = typer.Option(_AGENTS_DIR, "--agents-dir", envvar="DOKU_AGENTS_DIR", help="Directory containing subagents."),
+    workflows_dir: Path = typer.Option(_WORKFLOWS_DIR, "--workflows-dir", envvar="DOKU_WORKFLOWS_DIR", help="Directory used to resolve workflow names."),
 ) -> None:
     """Run a configured agent workflow over REPO."""
     api_key = os.environ.get("DOKU_API_KEY")
@@ -113,7 +114,7 @@ def analyze(
     out = out.resolve()
 
     try:
-        loaded_workflow = load_workflow(discover_named(_WORKFLOWS_DIR, workflow))
+        loaded_workflow = load_workflow(discover_named(workflows_dir.resolve(), workflow))
     except Exception as exc:  # noqa: BLE001 - configuration error for the operator
         typer.echo(f"Invalid workflow: {exc}", err=True)
         raise typer.Exit(code=1) from exc

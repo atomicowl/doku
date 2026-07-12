@@ -61,8 +61,11 @@ uv run doku-workflow validate workflows/my_review --agents-dir ./agents
 `agents/main/prompt.md` is an optional global main-agent system prompt.
 When non-empty, the harness prepends it to the selected workflow's prompt.
 The default definition roots are `./agents` and `./workflows` in the current
-working directory; use `--agents-dir` and a workflow directory path when the
-definitions live elsewhere.
+working directory. Configure them with `--agents-dir` / `DOKU_AGENTS_DIR` and
+`--workflows-dir` / `DOKU_WORKFLOWS_DIR`. A value passed to `--workflow` is
+first accepted as a directory path; otherwise it is resolved by name under
+the configured workflows directory (both `my-workflow` and `my_workflow`
+folder spellings are supported).
 
 Options:
 

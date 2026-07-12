@@ -41,7 +41,7 @@ def create(
 @app.command()
 def validate(
     workflow_dir: Path,
-    agents_dir: Path = typer.Option(_AGENTS_DIR, "--agents-dir"),
+    agents_dir: Path = typer.Option(_AGENTS_DIR, "--agents-dir", envvar="DOKU_AGENTS_DIR"),
 ) -> None:
     """Validate a workflow and all of its referenced subagents."""
     try:

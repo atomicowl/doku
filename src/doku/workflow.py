@@ -95,12 +95,13 @@ def load_workflow(directory: Path) -> LoadedWorkflow:
 
 def discover_named(root: Path, name_or_path: str) -> Path:
     """Resolve a workflow by directory path or by name under ``root``."""
-    candidate = Path(name_or_path)
+    candidate = Path(name_or_path).expanduser()
     if candidate.is_dir():
         return candidate.resolve()
-    named = root / name_or_path.replace("-", "_")
-    if (named / "config.toml").is_file():
-        return named.resolve()
+    for directory_name in dict.fromkeys((name_or_path, name_or_path.replace("-", "_"))):
+        named = root / directory_name
+        if (named / "config.toml").is_file():
+            return named.resolve()
     raise FileNotFoundError(f"workflow {name_or_path!r} not found under {root}")
 
 
