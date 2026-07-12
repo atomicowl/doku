@@ -19,7 +19,14 @@ runner = CliRunner()
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for name in ("DOKU_API_KEY", "DOKU_API_BASE", "DOKU_MODEL", "DOKU_CHAT_COMPLETIONS"):
+    for name in (
+        "DOKU_API_KEY",
+        "DOKU_API_BASE",
+        "DOKU_MODEL",
+        "DOKU_CHAT_COMPLETIONS",
+        "DOKU_MODEL_RPS",
+        "DOKU_MODEL_BURST",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -87,6 +94,40 @@ def test_chat_completions_defaults_off_and_env_enables_it(captured_build, tmp_pa
         env={"DOKU_MODEL": "openai:m", "DOKU_CHAT_COMPLETIONS": "1"},
     )
     assert captured["chat_completions"] is True
+
+
+def test_rate_limit_disabled_by_default(captured_build, tmp_path):
+    captured = _run(captured_build, [FIXTURE_REPO, "--out", str(tmp_path)], env={"DOKU_MODEL": "openai:m"})
+    assert captured["model_rps"] is None
+    assert captured["model_burst"] == 1
+
+
+def test_rate_limit_from_env(captured_build, tmp_path):
+    captured = _run(
+        captured_build,
+        [FIXTURE_REPO, "--out", str(tmp_path)],
+        env={"DOKU_MODEL": "openai:m", "DOKU_MODEL_RPS": "0.5", "DOKU_MODEL_BURST": "3"},
+    )
+    assert captured["model_rps"] == 0.5
+    assert captured["model_burst"] == 3
+
+
+@pytest.mark.parametrize(
+    ("env", "message"),
+    [
+        ({"DOKU_MODEL_RPS": "fast"}, "DOKU_MODEL_RPS must be a positive number, got 'fast'."),
+        ({"DOKU_MODEL_RPS": "0"}, "DOKU_MODEL_RPS must be a positive number, got '0'."),
+        ({"DOKU_MODEL_RPS": "1", "DOKU_MODEL_BURST": "0"}, "DOKU_MODEL_BURST must be a positive integer, got '0'."),
+        ({"DOKU_MODEL_BURST": "5"}, "DOKU_MODEL_BURST requires DOKU_MODEL_RPS to be set."),
+    ],
+)
+def test_stops_on_invalid_rate_limit(captured_build, tmp_path, env, message):
+    result = runner.invoke(
+        cli.app, [FIXTURE_REPO, "--out", str(tmp_path)], env={**CREDS, "DOKU_MODEL": "openai:m", **env}
+    )
+    assert result.exit_code == 1
+    assert message in result.output
+    assert not captured_build, "must stop before building the orchestrator"
 
 
 def test_credentials_are_passed_to_build(captured_build, tmp_path):

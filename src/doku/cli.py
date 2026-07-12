@@ -31,6 +31,37 @@ app = typer.Typer(add_completion=False)
 DETECTORS = [JavaSpringDetector()]
 
 
+def _parse_rate_limit(errors: list[str]) -> tuple[float | None, int]:
+    """Optional model rate limit from DOKU_MODEL_RPS / DOKU_MODEL_BURST.
+
+    Unset means no rate limiting. Invalid values are reported into `errors`
+    (same stop-with-a-clear-message treatment as the required settings).
+    """
+    rps_raw = os.environ.get("DOKU_MODEL_RPS")
+    burst_raw = os.environ.get("DOKU_MODEL_BURST")
+    model_rps: float | None = None
+    model_burst = 1
+    if rps_raw:
+        try:
+            model_rps = float(rps_raw)
+        except ValueError:
+            model_rps = -1.0
+        if model_rps <= 0:
+            errors.append(f"DOKU_MODEL_RPS must be a positive number, got {rps_raw!r}.")
+            model_rps = None
+    if burst_raw:
+        if not rps_raw:
+            errors.append("DOKU_MODEL_BURST requires DOKU_MODEL_RPS to be set.")
+        try:
+            model_burst = int(burst_raw)
+        except ValueError:
+            model_burst = -1
+        if model_burst < 1:
+            errors.append(f"DOKU_MODEL_BURST must be a positive integer, got {burst_raw!r}.")
+            model_burst = 1
+    return model_rps, model_burst
+
+
 def _echo(message: str) -> None:
     """`typer.echo` plus an explicit flush.
 
@@ -54,6 +85,7 @@ def analyze(
     api_base = os.environ.get("DOKU_API_BASE")
     missing = [name for name, value in [("DOKU_API_KEY", api_key), ("DOKU_API_BASE", api_base)] if not value]
     errors = []
+    model_rps, model_burst = _parse_rate_limit(errors)
     if missing:
         errors.append(
             f"Missing required environment variable(s): {', '.join(missing)}.\n"
@@ -94,6 +126,8 @@ def analyze(
         api_base=api_base,
         concurrency=concurrency,
         chat_completions=chat_completions,
+        model_rps=model_rps,
+        model_burst=model_burst,
     )
     display = RunDisplay(total=len(candidates), log_path=layout.log_path)
     with display:

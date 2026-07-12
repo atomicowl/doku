@@ -17,6 +17,7 @@ from deepagents import FilesystemPermission, SubAgent, create_deep_agent
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from deepagents.profiles.provider.provider_profiles import apply_provider_profile
 from langchain.chat_models import init_chat_model
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_quickjs import CodeInterpreterMiddleware
 
 from doku import models
@@ -96,7 +97,14 @@ def _load_subagents(agents_dir: Path) -> tuple[list[SubAgent], dict[str, Filesys
     return subagents, routes
 
 
-def _resolve_model(model: str, api_key: str, api_base: str, chat_completions: bool = False):
+def _resolve_model(
+    model: str,
+    api_key: str,
+    api_base: str,
+    chat_completions: bool = False,
+    model_rps: float | None = None,
+    model_burst: int = 1,
+):
     """Build the chat model with explicit credentials (no provider env-var
     fallbacks), keeping deepagents' provider-profile kwargs (e.g. OpenRouter
     app attribution) that a plain string model id would have received.
@@ -106,10 +114,19 @@ def _resolve_model(model: str, api_key: str, api_base: str, chat_completions: bo
     Completions API, for OpenAI-compatible servers (vLLM, Ollama, gateways)
     that don't implement the Responses API. No-op for providers whose profile
     doesn't involve the Responses API.
+
+    `model_rps` attaches an `InMemoryRateLimiter` capping request starts at
+    that many per second, with bursts of up to `model_burst`. The orchestrator
+    and every subagent share this one model instance, so the cap is global
+    across the whole run regardless of `--concurrency`.
     """
     kwargs = {**apply_provider_profile(model), "api_key": api_key, "base_url": api_base}
     if chat_completions and "use_responses_api" in kwargs:
         kwargs["use_responses_api"] = False
+    if model_rps is not None:
+        kwargs["rate_limiter"] = InMemoryRateLimiter(
+            requests_per_second=model_rps, max_bucket_size=model_burst
+        )
     return init_chat_model(model, **kwargs)
 
 
@@ -122,6 +139,8 @@ def build_orchestrator(
     api_base: str,
     concurrency: int,
     chat_completions: bool = False,
+    model_rps: float | None = None,
+    model_burst: int = 1,
     interpreter_timeout: float = DEFAULT_INTERPRETER_TIMEOUT_SECONDS,
     agents_dir: Path = _AGENTS_DIR,
 ):
@@ -151,7 +170,7 @@ def build_orchestrator(
     )
 
     return create_deep_agent(
-        model=_resolve_model(model, api_key, api_base, chat_completions),
+        model=_resolve_model(model, api_key, api_base, chat_completions, model_rps, model_burst),
         system_prompt=orchestrator_prompt,
         subagents=subagents,
         skills=orchestrator_skills or None,

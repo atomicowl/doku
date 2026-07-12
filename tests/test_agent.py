@@ -134,6 +134,20 @@ def test_chat_completions_is_noop_for_other_providers():
     assert type(model).__name__ == "ChatOpenRouter"
 
 
+def test_rate_limiter_attached_when_rps_set():
+    model = _resolve_model(
+        "openrouter:z-ai/glm-5.2", "k", "https://x/api/v1", model_rps=2.0, model_burst=5
+    )
+    assert model.rate_limiter is not None
+    assert model.rate_limiter.requests_per_second == 2.0
+    assert model.rate_limiter.max_bucket_size == 5
+
+
+def test_no_rate_limiter_by_default():
+    model = _resolve_model("openrouter:z-ai/glm-5.2", "k", "https://x/api/v1")
+    assert model.rate_limiter is None
+
+
 def test_build_orchestrator_with_skills(tmp_path):
     agents_dir = make_agents_dir(tmp_path, with_skills=True)
     repo = tmp_path / "repo"
