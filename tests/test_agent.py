@@ -83,10 +83,8 @@ def test_shipped_agents_include_discoverers_and_documenter():
     subagents, _routes, roles = _load_subagents(_AGENTS_DIR)
     by_name = {s["name"]: s for s in subagents}
     assert set(by_name) == {
-        "decision-flow-analyzer",
+        "call-chain-analyzer",
         "entrypoint-documenter",
-        "external-dependency-analyzer",
-        "feature-toggle-analyzer",
         "kafka-consumer-extractor",
         "rest-api-extractor",
         "soap-api-extractor",
@@ -96,9 +94,7 @@ def test_shipped_agents_include_discoverers_and_documenter():
     assert by_name["rest-api-extractor"]["response_format"].__name__ == "RestEndpoints"
     assert by_name["soap-api-extractor"]["response_format"].__name__ == "SoapOperations"
     assert by_name["kafka-consumer-extractor"]["response_format"].__name__ == "KafkaConsumers"
-    assert by_name["decision-flow-analyzer"]["response_format"].__name__ == "DecisionFlowAnalysis"
-    assert by_name["feature-toggle-analyzer"]["response_format"].__name__ == "FeatureToggleAnalysis"
-    assert by_name["external-dependency-analyzer"]["response_format"].__name__ == "ExternalDependencyAnalysis"
+    assert by_name["call-chain-analyzer"]["response_format"].__name__ == "CallChainAnalysis"
     assert roles["entrypoint-documenter"] == "documenter"
     assert by_name["entrypoint-documenter"]["response_format"].__name__ == "EntrypointDoc"
 

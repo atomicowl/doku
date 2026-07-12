@@ -1,0 +1,14 @@
+name = "call-chain-analyzer"
+description = "Traces one entrypoint's reachable call chain, including decisions, feature toggles, and external dependencies."
+output = "structured"
+response_model = "models:CallChainAnalysis"
+
+[[permissions]]
+operations = ["read"]
+paths = ["/repo", "/repo/**"]
+mode = "allow"
+
+[[permissions]]
+operations = ["read", "write"]
+paths = ["/**"]
+mode = "deny"

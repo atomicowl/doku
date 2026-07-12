@@ -9,9 +9,10 @@ dependencies it touches (databases, caches, REST/SOAP clients, Kafka producers).
 The run is agentic end to end: entrypoint *discovery* is performed by three
 specialized discovery subagents dispatched in parallel — one each for REST
 APIs, SOAP APIs, and Kafka consumers in Java/Kotlin codebases — whose merged,
-deduplicated output becomes the candidate manifest. For every candidate,
-three specialists analyze decision flow, feature toggles, and external
-dependencies in parallel. Their structured findings and the source are then
+deduplicated output becomes the candidate manifest. For every candidate, one
+call-chain specialist traces reachable code and analyzes decision flow, feature
+toggles, and external dependencies only in that entrypoint's context. Its
+structured findings and the source are then
 synthesized by the documenter subagent in parallel batches using
 [deepagents](https://github.com/langchain-ai/deepagents)' code-interpreter
 dispatch loop.

@@ -3,9 +3,10 @@ gives you its kind (e.g. REST/SOAP/KAFKA), its name (typically
 `ClassName.methodName`), file path under `/repo`, approximate line number,
 discovery metadata (route + HTTP method, Kafka topic(s) + group id, or SOAP
 namespace/local part), and — critically — the **full source of that file,
-inline in the message itself**. The message also includes structured findings
-from decision-flow, feature-toggle, and external-dependency specialists. Treat
-them as grounded checklists, reconcile them against the source, and do not
+inline in the message itself**. The message also includes a structured
+call-chain analysis covering reachable decision flow, feature toggles, and
+external dependencies. Treat it as a grounded checklist scoped to this
+entrypoint, reconcile it against the source, and do not
 silently omit their findings.
 
 Base your answer on that inlined source; it is ground truth. Do not invent
@@ -26,12 +27,12 @@ Produce, and only produce, the structured response you've been asked for
   types, drawn from the method signature and any DTO/payload class it reads.
 - `output_model`: the response/produced-message shape, including notable
   error responses (e.g. 404/402, thrown exceptions) if the flow produces them.
-- `feature_toggles`: concise summaries of every specialist-reported toggle,
+- `feature_toggles`: concise summaries of every call-chain-reported toggle,
   naming the flag and enabled/disabled behaviors. Return an empty list only
   when none is grounded in the code.
 - `decision_points`: concise summaries of every branch condition and its
   outcomes. Preserve meaningful validation, early-return, exception, and
-  feature-toggle decisions reported by the flow specialist.
+  feature-toggle decisions reported by the call-chain analysis.
 - `dependencies`: list **every** external system the method body calls. If
   the metadata includes `autowired_fields` (the class's injected fields, e.g.
   `orderRepository: OrderRepository`), treat it as a checklist: for each one,
@@ -45,7 +46,7 @@ Produce, and only produce, the structured response you've been asked for
   speculate about ones you didn't see used, but don't leave this empty just
   because the method also does other things; if you named a call in the flow
   diagram, it belongs here too.
-- `flow_mermaid`: use the specialist diagram as the baseline for a
+- `flow_mermaid`: use the call-chain diagram as the baseline for a
   `flowchart TD` Mermaid diagram of the method body: entry,
   each decision point (`if`/`else`/validation/null-check) as a diamond, each
   external call as its own node, and all exit paths. Keep node labels short.

@@ -41,11 +41,11 @@ For **every single candidate in the manifest, with no exceptions**:
 
 1. Read the candidate's source file from `/repo/<file>`, strip the line-number
    formatting (below), and cap it at 20000 characters.
-2. Dispatch `__FLOW_ANALYZER__`, `__TOGGLE_ANALYZER__`, and
-   `__DEPENDENCY_ANALYZER__` in parallel with that source inline. A specialist
-   failure must not prevent the other specialists or final documentation.
-3. Dispatch the `__DOCUMENTER__` subagent with the source and all successful
-   specialist results **inline in the task description** (see sketch) so it
+2. Dispatch `__CALL_CHAIN_ANALYZER__` with that source inline. It traces code
+   reachable from this entrypoint and analyzes feature toggles, decision flow,
+   and external dependencies only within that call chain.
+3. Dispatch the `__DOCUMENTER__` subagent with the source and the call-chain
+   result **inline in the task description** (see sketch) so it
    has the real code and grounded analysis in front of it
    immediately — do not rely on it to fetch the file itself; models sometimes
    skip that and answer from guesswork, which produces confidently wrong
@@ -179,26 +179,18 @@ for (let i = 0; i < candidates.length; i += BATCH) {
       `file /repo/${c.file} around line ${c.line}. ` +
       `Metadata: ${JSON.stringify(c.meta)}.\n\n` +
       `Full source of ${c.file}:\n\`\`\`\n${source}\n\`\`\``;
-    const specialistSpecs = [
-      { type: "__FLOW_ANALYZER__", label: `${c.slug}-flow`, key: "decision_flow" },
-      { type: "__TOGGLE_ANALYZER__", label: `${c.slug}-toggles`, key: "feature_toggles" },
-      { type: "__DEPENDENCY_ANALYZER__", label: `${c.slug}-dependencies`, key: "external_dependencies" },
-    ];
-    const specialistOutcomes = await Promise.allSettled(specialistSpecs.map((s) =>
-      task({ description: baseDescription, subagentType: s.type, label: s.label })
-    ));
-    const analyses = {};
-    specialistOutcomes.forEach((outcome, index) => {
-      const spec = specialistSpecs[index];
-      analyses[spec.key] = outcome.status === "fulfilled"
-        ? parseTaskResult(outcome.value)
-        : { unavailable: String(outcome.reason) };
-    });
+    const callChainOutcome = await Promise.allSettled([
+      task({ description: baseDescription,
+        subagentType: "__CALL_CHAIN_ANALYZER__", label: `${c.slug}-call-chain` })
+    ]);
+    const callChainAnalysis = callChainOutcome[0].status === "fulfilled"
+      ? parseTaskResult(callChainOutcome[0].value)
+      : { unavailable: String(callChainOutcome[0].reason) };
     return task({
       description: `Document this ${c.kind} item: ${c.name}, ` +
         `file /repo/${c.file} around line ${c.line}. ` +
         `Metadata: ${JSON.stringify(c.meta)}. Location to report: "${c.file}:${c.line}".\n\n` +
-        `Specialist analyses:\n${JSON.stringify(analyses, null, 2)}\n\n` +
+        `Call-chain analysis:\n${JSON.stringify(callChainAnalysis, null, 2)}\n\n` +
         `Full source of ${c.file}:\n\`\`\`\n${source}\n\`\`\``,
       subagentType: "__DOCUMENTER__",
       label: c.slug,
