@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from doku.workflow import discover_named, load_workflow
+from doku.agent import _compose_workflow_prompt
 
 
 def test_load_text_workflow_and_subagent_allowlist(tmp_path):
@@ -43,3 +44,21 @@ def test_discover_named_accepts_name_or_path(tmp_path):
     (bundled / "config.toml").write_text("")
     assert discover_named(tmp_path, "my-workflow") == bundled.resolve()
     assert discover_named(tmp_path / "unused", str(bundled)) == bundled.resolve()
+
+
+def test_global_main_prompt_is_prepended_to_workflow_prompt(tmp_path):
+    workflow_dir = tmp_path / "workflow"
+    workflow_dir.mkdir()
+    (workflow_dir / "prompt.md").write_text("Run with __CONCURRENCY__ workers.")
+    (workflow_dir / "config.toml").write_text(
+        'name = "review"\nsubagents = []\noutput = "text"\n'
+    )
+    agents_dir = tmp_path / "agents"
+    (agents_dir / "main").mkdir(parents=True)
+    (agents_dir / "main" / "prompt.md").write_text("Follow company policy.\n")
+
+    prompt = _compose_workflow_prompt(
+        load_workflow(workflow_dir), agents_dir, concurrency=4
+    )
+
+    assert prompt == "Follow company policy.\n\nRun with 4 workers."

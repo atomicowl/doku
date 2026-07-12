@@ -74,7 +74,7 @@ def validate(agents_dir: Path = typer.Option(_AGENTS_DIR, hidden=True)) -> None:
     """Validate all configs, prompts, skills, names, roles, and response models."""
     errors: list[str] = []
     names: set[str] = set()
-    folders = [agents_dir / "orchestrator", *sorted((agents_dir / "subagents").iterdir())]
+    folders = [agents_dir / "main", *sorted((agents_dir / "subagents").iterdir())]
     for folder in folders:
         if not (folder / "config.toml").exists():
             continue

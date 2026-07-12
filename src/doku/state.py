@@ -14,7 +14,12 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from doku.agents.subagents.entrypoint_documenter.models import EntrypointDoc
+from doku.agent_config import resolve_response_model
+
+EntrypointDoc = resolve_response_model(
+    "models:EntrypointDoc",
+    Path.cwd() / "agents/subagents/entrypoint_documenter",
+)
 from doku.render import (
     render_dependencies,
     render_entrypoint_markdown,

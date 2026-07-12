@@ -58,6 +58,12 @@ uv run doku-workflow create my-review
 uv run doku-workflow validate workflows/my_review --agents-dir ./agents
 ```
 
+`agents/main/prompt.md` is an optional global main-agent system prompt.
+When non-empty, the harness prepends it to the selected workflow's prompt.
+The default definition roots are `./agents` and `./workflows` in the current
+working directory; use `--agents-dir` and a workflow directory path when the
+definitions live elsewhere.
+
 Options:
 
 - `--model` — LLM model id, e.g. `openrouter:z-ai/glm-5.2`. Required, no
@@ -171,7 +177,7 @@ The shipped discovery subagents cover Java/Kotlin: Spring MVC/WebFlux and
 JAX-RS (REST), Spring-WS and JAX-WS/CXF (SOAP), `@KafkaListener`/
 `@KafkaHandler` plus manual consumer poll loops (Kafka). The pipeline itself
 is task-agnostic: each subagent lives in its own folder under
-`src/doku/agents/subagents/` with a `role` (`discoverer` or `documenter`) in
+`agents/subagents/` with a `role` (`discoverer` or `documenter`) in
 its `config.toml`, and the orchestrator's flow is derived from the folders on
 disk. Dropping in a new discoverer folder (say, for scheduled jobs or gRPC
 services) is the whole job — it gets dispatched automatically, no code or

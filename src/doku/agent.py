@@ -3,7 +3,7 @@ documenter subagents over every discovered candidate.
 
 Agent definitions (system prompt + config.toml with name, description,
 response_format, and filesystem permissions) live under `agents/`: the main
-agent in `agents/orchestrator/`, one folder per subagent in
+agent in `agents/main/`, one folder per subagent in
 `agents/subagents/<name>/`. See `agents/README.md`.
 """
 
@@ -23,11 +23,21 @@ from langchain_quickjs import CodeInterpreterMiddleware
 from doku.agent_config import AgentConfig, resolve_response_model
 from doku.workflow import LoadedWorkflow
 
-_AGENTS_DIR = Path(__file__).parent / "agents"
+_AGENTS_DIR = Path.cwd() / "agents"
 
 # Per-eval wall-clock budget. The default (5s) is sized for quick tool-assisted
 # snippets, not a loop that dispatches many LLM subagent calls; give it room.
 DEFAULT_INTERPRETER_TIMEOUT_SECONDS = 900.0
+
+
+def _compose_workflow_prompt(
+    workflow: LoadedWorkflow, agents_dir: Path, *, concurrency: int
+) -> str:
+    """Prepend optional global main-agent instructions to workflow instructions."""
+    workflow_prompt = workflow.prompt(CONCURRENCY=concurrency)
+    main_prompt_path = agents_dir / "main" / "prompt.md"
+    main_prompt = main_prompt_path.read_text().strip() if main_prompt_path.is_file() else ""
+    return f"{main_prompt}\n\n{workflow_prompt}" if main_prompt else workflow_prompt
 
 
 def _load_agent(agent_dir: Path) -> tuple[AgentConfig, str]:
@@ -208,9 +218,9 @@ def build_orchestrator(
     Agents that declare `skills` in their config.toml additionally get their
     skill source dirs mounted read-only under /skills/<agent-name>/.
     """
-    orchestrator_config, orchestrator_template = _load_agent(agents_dir / "orchestrator")
+    orchestrator_config, orchestrator_template = _load_agent(agents_dir / "main")
     orchestrator_routes, orchestrator_skills = _skill_mounts(
-        orchestrator_config.name, agents_dir / "orchestrator", orchestrator_config
+        orchestrator_config.name, agents_dir / "main", orchestrator_config
     )
     subagents, subagent_routes, roles = _load_subagents(agents_dir)
 
@@ -300,11 +310,14 @@ def build_workflow_agent(
     kwargs: dict[str, Any] = {}
     if workflow.response_model is not None:
         kwargs["response_format"] = workflow.response_model
+    system_prompt = _compose_workflow_prompt(
+        workflow, agents_dir, concurrency=concurrency
+    )
     return create_deep_agent(
         model=_resolve_model(
             model, api_key, api_base, chat_completions, model_rps, model_burst, max_retries
         ),
-        system_prompt=workflow.prompt(CONCURRENCY=concurrency),
+        system_prompt=system_prompt,
         subagents=selected,
         middleware=[
             CodeInterpreterMiddleware(

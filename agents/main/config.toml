@@ -1,0 +1,14 @@
+# Optional global main-agent configuration shared by workflows.
+
+name = "main"
+
+# Skill source directories, relative to this agent's folder; each subdirectory
+# of a source is one skill (a folder with a SKILL.md). Sources are mounted
+# read-only at /skills/main/ and readable by this agent automatically.
+# skills = ["skills"]
+
+# The target repository mount is always read-only.
+[[permissions]]
+operations = ["write"]
+paths = ["/repo/**"]
+mode = "deny"

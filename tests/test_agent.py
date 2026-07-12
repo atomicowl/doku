@@ -32,9 +32,9 @@ Keep node labels short.
 
 def make_agents_dir(tmp_path: Path, *, with_skills: bool) -> Path:
     agents = tmp_path / "agents"
-    orch = agents / "orchestrator"
+    orch = agents / "main"
     orch.mkdir(parents=True)
-    orch_config = 'name = "orchestrator"\n'
+    orch_config = 'name = "main"\n'
     if with_skills:
         orch_config += 'skills = ["skills"]\n'
         (orch / "skills" / "flow-graphs").mkdir(parents=True)
@@ -49,7 +49,7 @@ def make_agents_dir(tmp_path: Path, *, with_skills: bool) -> Path:
         'role = "documenter"\n'
         'description = "Documents one item."\n'
         'output = "structured"\n'
-        'response_model = "doku.agents.subagents.entrypoint_documenter.models:EntrypointDoc"\n'
+        f'response_model = "{(_AGENTS_DIR / "subagents/entrypoint_documenter/models.py")}:EntrypointDoc"\n'
         + ('skills = ["skills"]\n' if with_skills else "")
         + '[[permissions]]\n'
         'operations = ["read", "write"]\n'
@@ -127,11 +127,11 @@ def test_load_subagents_with_skills(tmp_path):
 
 def test_skill_mounts_missing_dir_raises(tmp_path):
     agents_dir = make_agents_dir(tmp_path, with_skills=False)
-    orch_dir = agents_dir / "orchestrator"
+    orch_dir = agents_dir / "main"
     config, _prompt = _load_agent(orch_dir)
     config["skills"] = ["skills"]
-    with pytest.raises(FileNotFoundError, match="orchestrator"):
-        _skill_mounts("orchestrator", orch_dir, config)
+    with pytest.raises(FileNotFoundError, match="main"):
+        _skill_mounts("main", orch_dir, config)
 
 
 def test_no_skill_permissions_injected_without_sources(tmp_path):

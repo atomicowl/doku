@@ -7,7 +7,14 @@ hands entirely, so output is consistent regardless of what the model does.
 
 from __future__ import annotations
 
-from doku.agents.subagents.entrypoint_documenter.models import EntrypointDoc
+from pathlib import Path
+
+from doku.agent_config import resolve_response_model
+
+EntrypointDoc = resolve_response_model(
+    "models:EntrypointDoc",
+    Path.cwd() / "agents/subagents/entrypoint_documenter",
+)
 
 
 def render_entrypoint_markdown(slug: str, doc: EntrypointDoc) -> str:

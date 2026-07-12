@@ -48,9 +48,9 @@ uv run doku-agent create my-extractor --output structured \
 uv run doku-agent validate
 ```
 
-The orchestrator's `prompt.md` is a template: `__DISCOVERERS_LIST__`,
-`__DISCOVERERS_JS__`, `__DOCUMENTER__`, and `__CONCURRENCY__` are filled at
-build time from the loaded subagents (see `doku.agent`).
+Workflow prompts own orchestration instructions. `__CONCURRENCY__` is filled
+from the CLI, while additional placeholders come from the workflow's
+`[prompt_variables]` configuration.
 
 ## Skills
 
@@ -66,7 +66,7 @@ it is one [Anthropic-style skill](https://docs.langchain.com/oss/python/deepagen
 (`name`, `description`) followed by the instructions:
 
 ```
-orchestrator/
+main/
   config.toml        # skills = ["skills"]
   skills/
     my-skill/
@@ -82,8 +82,9 @@ mount is granted automatically, ahead of any deny rules in `permissions`.
 
 Layout:
 
-- `orchestrator/` — the main agent. Its prompt may use the `__CONCURRENCY__`
-  placeholder, substituted at build time from `--concurrency`.
+- `main/prompt.md` — optional global system instructions prepended to
+  every workflow prompt. It is empty by default; installations can customize
+  it without editing individual workflows.
 - `subagents/<name>/` — one folder per subagent. `doku.agent` discovers them
   automatically: add a new subagent by dropping in a folder with a
   `config.toml` and `prompt.md`.

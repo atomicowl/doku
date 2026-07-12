@@ -1,10 +1,16 @@
-from doku.agents.subagents.entrypoint_documenter.models import DependencyRef, EntrypointDoc
+from pathlib import Path
+
+from doku.agent_config import resolve_response_model
 from doku.render import (
     render_dependencies,
     render_entrypoint_markdown,
     render_errors,
     render_index,
 )
+
+MODEL_DIR = Path(__file__).parents[1] / "agents/subagents/entrypoint_documenter"
+EntrypointDoc = resolve_response_model("models:EntrypointDoc", MODEL_DIR)
+DependencyRef = EntrypointDoc.model_fields["dependencies"].annotation.__args__[0]
 
 DOC_A = EntrypointDoc(
     title="Create order",

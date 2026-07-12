@@ -13,7 +13,7 @@ from doku.agent import _AGENTS_DIR, build_workflow_agent, invoke_orchestrator
 from doku.progress import RunDisplay
 from doku.workflow import discover_named, final_message_text, load_workflow
 
-_WORKFLOWS_DIR = Path(__file__).parent / "workflows"
+_WORKFLOWS_DIR = Path.cwd() / "workflows"
 
 # At import time so the values are in place before Typer resolves envvar-bound
 # options like DOKU_MODEL. Searches from the working directory upward; real

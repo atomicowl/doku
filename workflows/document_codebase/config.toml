@@ -1,6 +1,6 @@
 name = "document-codebase"
 description = "Discover and document Java/Kotlin application entrypoints."
-prompt = "../../agents/orchestrator/prompt.md"
+prompt = "prompt.md"
 subagents = [
   "rest-api-extractor",
   "kafka-consumer-extractor",
