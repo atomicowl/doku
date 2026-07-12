@@ -70,9 +70,11 @@ GRAY_HEAD = "#5f6469"  # oklch(50% .01 250) — table header
 GRAY_PROMPT = "#6d7277"  # oklch(55% .01 250) — prompt arrow, row task text
 GRAY_CELL = "#767b80"  # oklch(58% .01 250) — tokens/time cells
 GRAY_TASK = "#7c8186"  # oklch(60% .01 250) — main agent task text
-GRAY_TS = "#44484d"  # oklch(40% .01 250) — type tags
+GRAY_LOG = "#9a9fa5"  # oklch(70% .01 250) — log body text
+GRAY_TS = "#44484d"  # oklch(40% .01 250) — log timestamps
 DIVIDER = "#2a2e33"  # oklch(30% .01 250) — divider rule
 BORDER = "#1c2024"  # oklch(24% .01 250) — header underline
+PANE_BORDER = "#171b1f"  # oklch(22% .01 250) — log pane border
 
 #: how many leading lines of the orchestrator's `eval` code to log
 MAX_EVAL_LINES = 60
@@ -82,6 +84,9 @@ MAX_PROMPT_CHARS = 800
 
 #: finished dispatches kept visible at the bottom of the dashboard
 RECENT_FINISHES = 6
+
+#: log lines kept per agent for the dashboard's tail pane
+LOG_TAIL_LINES = 8
 
 #: matches the inlined-source block the orchestrator's prompt template appends
 _SOURCE_BLOCK_RE = re.compile(r"\n+Full source of (\S+):\n```")
@@ -184,6 +189,9 @@ class RunDisplay:
         self._started_at = time.monotonic()
         self.tokens = 0  # best-effort total across every agent, from usage_metadata
         self._main_tokens = 0  # the orchestrator's own share
+        # the design's lower pane is a log tail — ours mirrors the last few
+        # lines of the run log this display already writes to `log_path`
+        self._log_tail: deque[Text] = deque(maxlen=LOG_TAIL_LINES)
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -271,16 +279,35 @@ class RunDisplay:
                 Text(row["note"], style=ERROR if failed else GRAY_PROMPT),
             )
 
+        # log tail pane, like the design's `$ tail -f logs/<agent>.log`
+        tail_header = Text()
+        tail_header.append("$ ", style=GRAY_PROMPT)
+        tail_header.append(
+            f"tail -f {self.log_path}" if self.log_path else "tail -f run log",
+            style=GRAY_PROMPT,
+        )
+        tail_header.append(" ▊", style=f"blink {ACCENT}")
+        tail_pane = Panel(
+            Group(*self._log_tail) if self._log_tail else Text("…", style=GRAY_TS),
+            border_style=PANE_BORDER,
+            padding=(0, 1),
+        )
+
         footer = Text()
         footer.append("➜ ", style=GRAY_PROMPT)
         footer.append(
-            f"full log: {self.log_path}" if self.log_path else "running…",
-            style=GRAY_STATS,
+            "watching the run — subagents dispatch automatically", style=GRAY_STATS
         )
         footer.append(" ▊", style=f"blink {ACCENT}")
 
         return Group(
-            header, stats, table, Rule(characters="─", style=DIVIDER), footer
+            header,
+            stats,
+            table,
+            Rule(characters="─", style=DIVIDER),
+            tail_header,
+            tail_pane,
+            footer,
         )
 
     def _refresh(self) -> None:
@@ -290,6 +317,17 @@ class RunDisplay:
     def _log_print(self, renderable: Any) -> None:
         if self._log is not None:
             self._log.print(renderable)
+        # mirror into the dashboard's tail pane: one timestamped line per
+        # entry, multi-line panels (prompts, eval code) collapsed to their
+        # title — the full version is in the log file
+        entry = Text()
+        entry.append(f"[{time.strftime('%H:%M:%S')}] ", style=GRAY_TS)
+        if isinstance(renderable, Text):
+            entry.append_text(renderable.copy())
+        else:
+            title = getattr(renderable, "title", None) or "…"
+            entry.append(f"── {title} ──", style=GRAY_LOG)
+        self._log_tail.append(entry)
 
     def _console_line(self, line: Text) -> None:
         """Plain lifecycle output for non-TTY runs (piped to a file/CI log)."""

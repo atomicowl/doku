@@ -320,6 +320,26 @@ def test_context_manager_closes_log_file(tmp_path):
     assert "rest-Foo-bar" in (tmp_path / "run.log").read_text()
 
 
+def test_log_tail_mirrors_log_lines(tmp_path):
+    from doku.progress import LOG_TAIL_LINES
+
+    display = make_display(tmp_path)
+    _start_dispatch(display)
+
+    assert any("rest-Foo-bar" in entry.plain for entry in display._log_tail)
+
+    # multi-line panels are collapsed to their title in the tail
+    display.on_values(NS, {"messages": [_FakeHumanMessage(PROMPT)]})
+    assert any("── prompt → rest-Foo-bar ──" in entry.plain for entry in display._log_tail)
+    assert not any("void bar()" in entry.plain for entry in display._log_tail)
+
+    # bounded: only the most recent lines are kept
+    for i in range(LOG_TAIL_LINES + 5):
+        display.on_update((), "model", {"messages": [_FakeAIMessage(content=f"step {i}")]})
+    assert len(display._log_tail) == LOG_TAIL_LINES
+    assert any(f"step {LOG_TAIL_LINES + 4}" in entry.plain for entry in display._log_tail)
+
+
 def test_live_dashboard_on_forced_terminal(tmp_path):
     """Smoke test of the TTY path: Live starts, renders, and stops cleanly."""
     console = Console(file=io.StringIO(), width=120, force_terminal=True)
@@ -335,3 +355,4 @@ def test_live_dashboard_on_forced_terminal(tmp_path):
     assert "rest-Foo-bar" in out
     assert "SUBAGENT" in out  # Agent Console table header
     assert "orchestrator" in out  # main agent row
+    assert "tail -f" in out  # run-log tail pane
