@@ -3,7 +3,7 @@ name = "doku"
 version = "0.1.0"
 description = "AI agent harness that documents a codebase's entrypoints (REST/SOAP APIs, Kafka consumers)"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "deepagents[quickjs]>=0.6.12",
     "langchain-anthropic>=1.4.8",
