@@ -108,6 +108,9 @@ def test_soap_discoverer_only_reports_server_side_endpoints():
     assert "@WebServiceClient" in prompt
     assert "WebServiceTemplate" in prompt
     assert "JaxWsProxyFactoryBean" in prompt
+    assert "Mandatory WSDL cross-check" in prompt
+    assert "If WSDL files exist but all repository usage is client-side" in normalized
+    assert "Do not turn every WSDL operation into a result" in normalized
 
 
 def test_load_subagents_without_skills(tmp_path):

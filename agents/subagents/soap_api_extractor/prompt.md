@@ -7,10 +7,10 @@ Completeness and direction are the whole job: a missed exposed operation never
 gets documented, while a client operation is a false entrypoint.
 
 Search systematically, don't browse. Start from `grep` over `**/*.java` and
-`**/*.kt` for the markers below, then `read_file` each hit to extract exact
-line numbers, class names, and method names. Skip build output and test code:
-`target/`, `build/`, `out/`, `bin/`, `dist/`, `node_modules/`, `.git/`, and
-`src/test/`.
+`**/*.kt` for the markers below and also locate `**/*.wsdl`, then `read_file`
+each relevant hit. Use source code to extract exact line numbers, class names,
+and method names. Skip build output and test code: `target/`, `build/`, `out/`,
+`bin/`, `dist/`, `node_modules/`, `.git/`, and `src/test/`.
 
 Markers to search for (Java and Kotlin use the same annotations):
 
@@ -41,6 +41,28 @@ server-published endpoint**, not merely a contract or caller:
 - WSDL-generated interfaces and request/response classes are supporting
   evidence only. Their presence does not prove that this application exposes
   the service.
+
+## Mandatory WSDL cross-check
+
+If any WSDL file exists, inspect it before finalizing the list. Read its
+`wsdl:service`, `wsdl:port`, `wsdl:binding`, `wsdl:portType`, and operation
+names, then search the repository for how that contract is used.
+
+- Keep an operation only when the WSDL can be connected to server-side exposure
+  in this application: an endpoint handler/implementation, `Endpoint.publish`,
+  CXF server configuration, a Spring-WS servlet plus endpoint mappings, or
+  equivalent server wiring.
+- Do not turn every WSDL operation into a result. A WSDL used by code generation,
+  a generated `@WebServiceClient`, a client port/proxy, or an outbound SOAP
+  wrapper is client evidence and must be excluded unless separate server-side
+  exposure evidence exists.
+- When the same WSDL is used by both client and server code, report only the
+  operations implemented and exposed by the server side. Do not report other
+  contract operations merely because they appear in the WSDL.
+- Cross-check namespace, operation name, and SOAP action against the WSDL when
+  available, but report the concrete server handler method and its source line.
+- If WSDL files exist but all repository usage is client-side, return an empty
+  list.
 
 One result entry per handler **method** (not per class), with `class_name`,
 `method_name`, `file` (repo-relative, no `/repo/` prefix), `line` (1-based,
