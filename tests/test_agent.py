@@ -6,7 +6,14 @@ import pytest
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from deepagents.middleware.skills import _list_skills
 
-from doku.agent import _load_agent, _load_subagents, _permissions, _skill_mounts, build_orchestrator
+from doku.agent import (
+    _load_agent,
+    _load_subagents,
+    _permissions,
+    _resolve_model,
+    _skill_mounts,
+    build_orchestrator,
+)
 
 SKILL_MD = """\
 ---
@@ -106,6 +113,25 @@ def test_skills_discoverable_through_composite_backend(tmp_path):
     (skill,) = _list_skills(backend, "/skills/documenter/skills")
     assert skill["name"] == "flow-graphs"
     assert skill["description"] == "How to draw good mermaid flow graphs."
+
+
+def test_openai_models_default_to_responses_api():
+    model = _resolve_model("openai:gpt-5.2", "test-key", "https://llm.example.com/v1")
+    assert model.use_responses_api is True
+
+
+def test_chat_completions_overrides_responses_api():
+    model = _resolve_model(
+        "openai:llama-3.3-70b", "test-key", "http://localhost:8000/v1", chat_completions=True
+    )
+    assert model.use_responses_api is False
+
+
+def test_chat_completions_is_noop_for_other_providers():
+    model = _resolve_model(
+        "openrouter:z-ai/glm-5.2", "test-key", "https://llm.example.com/api/v1", chat_completions=True
+    )
+    assert type(model).__name__ == "ChatOpenRouter"
 
 
 def test_build_orchestrator_with_skills(tmp_path):

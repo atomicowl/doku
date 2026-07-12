@@ -19,7 +19,7 @@ runner = CliRunner()
 
 @pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
-    for name in ("DOKU_API_KEY", "DOKU_API_BASE", "DOKU_MODEL"):
+    for name in ("DOKU_API_KEY", "DOKU_API_BASE", "DOKU_MODEL", "DOKU_CHAT_COMPLETIONS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -70,6 +70,23 @@ def test_flag_overrides_env_var(captured_build, tmp_path):
         env={"DOKU_MODEL": "openrouter:from-env"},
     )
     assert captured["model"] == "openrouter:from-flag"
+
+
+def test_chat_completions_defaults_off_and_env_enables_it(captured_build, tmp_path):
+    captured = _run(
+        captured_build,
+        [FIXTURE_REPO, "--out", str(tmp_path)],
+        env={"DOKU_MODEL": "openai:m"},
+    )
+    assert captured["chat_completions"] is False
+
+    captured_build.clear()
+    captured = _run(
+        captured_build,
+        [FIXTURE_REPO, "--out", str(tmp_path)],
+        env={"DOKU_MODEL": "openai:m", "DOKU_CHAT_COMPLETIONS": "1"},
+    )
+    assert captured["chat_completions"] is True
 
 
 def test_credentials_are_passed_to_build(captured_build, tmp_path):

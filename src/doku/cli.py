@@ -47,6 +47,7 @@ def analyze(
     out: Path = typer.Option(Path("docs"), "--out", "-o", help="Directory to write generated docs to."),
     model: str | None = typer.Option(None, "--model", envvar="DOKU_MODEL", help="LLM model id, e.g. openrouter:z-ai/glm-5.2. Required (no default): pass the flag or set DOKU_MODEL."),
     concurrency: int = typer.Option(5, "--concurrency", help="Max entrypoints documented in parallel."),
+    chat_completions: bool = typer.Option(False, "--chat-completions", envvar="DOKU_CHAT_COMPLETIONS", help="With openai:* models, use the plain Chat Completions API instead of the OpenAI Responses API — needed for OpenAI-compatible servers (vLLM, Ollama, gateways)."),
 ) -> None:
     """Discover entrypoints in REPO and generate documentation into OUT."""
     api_key = os.environ.get("DOKU_API_KEY")
@@ -92,6 +93,7 @@ def analyze(
         api_key=api_key,
         api_base=api_base,
         concurrency=concurrency,
+        chat_completions=chat_completions,
     )
     display = RunDisplay(total=len(candidates), log_path=layout.log_path)
     with display:

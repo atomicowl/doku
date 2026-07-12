@@ -43,10 +43,30 @@ Options:
   default: pass the flag or set `DOKU_MODEL` (the flag wins if both are
   given).
 - `--concurrency` — max entrypoints documented in parallel, default `5`.
+- `--chat-completions` — with `openai:*` models, talk the plain Chat
+  Completions API instead of the OpenAI Responses API. Also settable via
+  `DOKU_CHAT_COMPLETIONS=1`.
 
 Environment variables (all required, settable in `.env`): `DOKU_API_KEY`
 (LLM provider API key), `DOKU_API_BASE` (provider base URL), `DOKU_MODEL`
-(model id, unless `--model` is passed).
+(model id, unless `--model` is passed). Optional: `DOKU_CHAT_COMPLETIONS`.
+
+### Custom OpenAI-compatible providers
+
+Any server that speaks the OpenAI Chat Completions API (vLLM, Ollama,
+LiteLLM, corporate gateways) works via the `openai:` model prefix plus
+`--chat-completions` (without it, requests go to the OpenAI *Responses* API,
+which most compatible servers don't implement):
+
+```bash
+DOKU_MODEL=openai:llama-3.3-70b
+DOKU_API_BASE=http://localhost:8000/v1
+DOKU_API_KEY=dummy            # must be non-empty even if your server ignores auth
+DOKU_CHAT_COMPLETIONS=1
+```
+
+The served model must support tool/function calling — the orchestrator's
+dispatch loop depends on it.
 
 While it runs, the terminal shows a live, self-updating
 [Rich](https://github.com/Textualize/rich) dashboard — overall progress, what

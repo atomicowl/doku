@@ -96,13 +96,21 @@ def _load_subagents(agents_dir: Path) -> tuple[list[SubAgent], dict[str, Filesys
     return subagents, routes
 
 
-def _resolve_model(model: str, api_key: str, api_base: str):
+def _resolve_model(model: str, api_key: str, api_base: str, chat_completions: bool = False):
     """Build the chat model with explicit credentials (no provider env-var
     fallbacks), keeping deepagents' provider-profile kwargs (e.g. OpenRouter
     app attribution) that a plain string model id would have received.
+
+    `chat_completions` downgrades from the OpenAI Responses API (which the
+    provider profile turns on for `openai:` models) to the plain Chat
+    Completions API, for OpenAI-compatible servers (vLLM, Ollama, gateways)
+    that don't implement the Responses API. No-op for providers whose profile
+    doesn't involve the Responses API.
     """
-    profile = apply_provider_profile(model)
-    return init_chat_model(model, **{**profile, "api_key": api_key, "base_url": api_base})
+    kwargs = {**apply_provider_profile(model), "api_key": api_key, "base_url": api_base}
+    if chat_completions and "use_responses_api" in kwargs:
+        kwargs["use_responses_api"] = False
+    return init_chat_model(model, **kwargs)
 
 
 def build_orchestrator(
@@ -113,6 +121,7 @@ def build_orchestrator(
     api_key: str,
     api_base: str,
     concurrency: int,
+    chat_completions: bool = False,
     interpreter_timeout: float = DEFAULT_INTERPRETER_TIMEOUT_SECONDS,
     agents_dir: Path = _AGENTS_DIR,
 ):
@@ -142,7 +151,7 @@ def build_orchestrator(
     )
 
     return create_deep_agent(
-        model=_resolve_model(model, api_key, api_base),
+        model=_resolve_model(model, api_key, api_base, chat_completions),
         system_prompt=orchestrator_prompt,
         subagents=subagents,
         skills=orchestrator_skills or None,
