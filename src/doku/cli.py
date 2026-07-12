@@ -10,15 +10,12 @@ import typer
 from dotenv import find_dotenv, load_dotenv
 
 from doku.agent import build_orchestrator, invoke_orchestrator
-from doku.detectors import run_detectors
-from doku.detectors.java_spring import JavaSpringDetector
 from doku.progress import RunDisplay
 from doku.state import (
     StateLayout,
     final_message_text,
+    read_manifest,
     render_outputs,
-    write_empty_docs,
-    write_manifest,
 )
 
 # At import time so the values are in place before Typer resolves envvar-bound
@@ -27,8 +24,6 @@ from doku.state import (
 load_dotenv(find_dotenv(usecwd=True))
 
 app = typer.Typer(add_completion=False)
-
-DETECTORS = [JavaSpringDetector()]
 
 
 def _parse_model_tuning(errors: list[str]) -> tuple[float | None, int, int | None]:
@@ -118,17 +113,8 @@ def analyze(
     repo = repo.resolve()
     out = out.resolve()
 
-    _echo(f"Scanning {repo} for entrypoints...")
-    candidates = run_detectors(repo, DETECTORS)
-    _echo(f"Found {len(candidates)} entrypoint candidate(s).")
-    if not candidates:
-        write_empty_docs(out)
-        _echo(f"No entrypoints found. Wrote empty docs to {out}.")
-        return
-
     layout = StateLayout(out)
     layout.ensure_dirs()
-    write_manifest(repo, candidates, layout)
 
     _echo(f"Dispatching {model} orchestrator (concurrency={concurrency})...")
     _echo(f"Full activity log: {layout.log_path}")
@@ -144,15 +130,19 @@ def analyze(
         model_burst=model_burst,
         max_retries=max_retries,
     )
-    display = RunDisplay(total=len(candidates), log_path=layout.log_path)
+    # Total is unknown up front: the orchestrator's discovery subagents find
+    # the candidates during the run, so the display counts without a bar cap.
+    display = RunDisplay(log_path=layout.log_path)
     with display:
-        result = invoke_orchestrator(agent, len(candidates), display=display)
+        result = invoke_orchestrator(agent, display=display)
     _echo(f"{display.completed} completed, {display.failed} failed.")
     summary = final_message_text(result)
     if summary:
         _echo(f"Agent summary: {summary}")
 
-    errors = render_outputs(layout, candidates)
+    candidates = read_manifest(layout)
+    _echo(f"Discovered {len(candidates)} entrypoint(s).")
+    errors = render_outputs(layout, [candidate["slug"] for candidate in candidates])
     if errors:
         _echo(f"{len(errors)} entrypoint(s) failed to document; see _errors.md")
     _echo(f"Docs written to {out}")

@@ -1,10 +1,11 @@
 """On-disk pipeline state and final output generation.
 
 Everything the run persists lives under the docs output directory:
-`_state/` is the contract with the orchestrator agent (manifest in, raw
-results out), and the rendered Markdown next to it is the user-facing
-product. This module owns that layout and every read/write against it, so
-the CLI stays argument parsing and wiring.
+`_state/` is the contract with the orchestrator agent (which writes the
+discovered-candidate manifest and the raw per-entrypoint results), and the
+rendered Markdown next to it is the user-facing product. This module owns
+that layout and every read/write against it, so the CLI stays argument
+parsing and wiring.
 """
 
 from __future__ import annotations
@@ -13,7 +14,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from doku.detectors import EntrypointCandidate
 from doku.models import EntrypointDoc
 from doku.progress import text_of
 from doku.render import (
@@ -22,10 +22,6 @@ from doku.render import (
     render_errors,
     render_index,
 )
-
-# Cap how much source text gets inlined per candidate so one pathologically
-# large file can't blow out an entire dispatch batch's context.
-MAX_SOURCE_CHARS = 20_000
 
 
 @dataclass(frozen=True)
@@ -48,10 +44,6 @@ class StateLayout:
         return self.state_dir / "results"
 
     @property
-    def sources_dir(self) -> Path:
-        return self.state_dir / "sources"
-
-    @property
     def entrypoints_dir(self) -> Path:
         return self.out / "entrypoints"
 
@@ -68,65 +60,41 @@ class StateLayout:
         return self.state_dir / "run.log"
 
     def ensure_dirs(self) -> None:
-        for directory in (self.entrypoints_dir, self.results_dir, self.sources_dir):
+        for directory in (self.entrypoints_dir, self.results_dir):
             directory.mkdir(parents=True, exist_ok=True)
 
 
-def write_manifest(
-    repo: Path, candidates: list[EntrypointCandidate], layout: StateLayout
-) -> None:
-    """Write the source-free candidate manifest and its side-car source files."""
-    layout.entrypoints_json.write_text(
-        json.dumps(candidates_to_json(repo, candidates, layout.sources_dir), indent=2)
-    )
+def read_manifest(layout: StateLayout) -> list[dict]:
+    """Read the candidate manifest the orchestrator wrote after discovery.
 
-
-def candidates_to_json(
-    repo: Path, candidates: list[EntrypointCandidate], sources_dir: Path
-) -> list[dict]:
-    """Serialize candidates for the orchestrator, and write one small source
-    file per unique source file under `sources_dir`.
-
-    Each candidate's manifest entry carries `source_ref`, an index into
-    `sources_dir/<source_ref>.json` (`{"source_lines": [...]}` — one array
-    entry per line) rather than the source inlined in the manifest itself.
-    Two problems drove this split, both discovered by watching the
-    orchestrator's own reasoning on real (non-tiny) repos:
-
-    - `read_file` reformats content as `cat -n` lines and splits any single
-      physical line over 5000 chars into numbered continuation chunks
-      (`13.1`, `13.2`, ...) that have to be rejoined *without* a separator —
-      a whole file inlined as one JSON string is exactly such an oversized
-      line for almost any real source file, and getting that reconstruction
-      right is the kind of fiddly parsing a model reliably gets wrong.
-    - Tool results over ~80,000 chars get evicted to a side file by
-      deepagents' own context-management, forcing yet another layer of
-      pagination the model has to discover and handle itself.
-
-    A single manifest with every candidate's source inlined hits both once a
-    repo has more than a handful of entrypoints. Keeping the manifest itself
-    source-free (small regardless of repo size) and each source file small
-    (one file's contents, capped at `MAX_SOURCE_CHARS`) keeps every read
-    comfortably under both thresholds.
+    The manifest is model-authored (the orchestrator's dispatch loop writes
+    it from the discovery subagents' merged output), so be tolerant: a
+    missing or unparsable file yields `[]`, entries are only required to be
+    objects, and a missing `slug` is derived from the candidate fields the
+    same way the orchestrator is instructed to build it.
     """
-    file_to_ref: dict[str, int] = {}
-    payload = []
-    for candidate in candidates:
-        if candidate.file not in file_to_ref:
-            file_to_ref[candidate.file] = len(file_to_ref)
-        entry = candidate.to_dict()
-        entry["source_ref"] = file_to_ref[candidate.file]
-        payload.append(entry)
-
-    for file, ref in file_to_ref.items():
-        text = (repo / file).read_text(errors="replace")
-        if len(text) > MAX_SOURCE_CHARS:
-            text = text[:MAX_SOURCE_CHARS] + "\n... (truncated)"
-        (sources_dir / f"{ref}.json").write_text(
-            json.dumps({"source_lines": text.split("\n")})
-        )
-
-    return payload
+    if not layout.entrypoints_json.exists():
+        return []
+    try:
+        raw = json.loads(layout.entrypoints_json.read_text())
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(raw, list):
+        return []
+    entries = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        if not item.get("slug"):
+            derived = "-".join(
+                str(item.get(key, "unknown"))
+                for key in ("type", "class_name", "method_name")
+            ).lower()
+            item["slug"] = "".join(
+                ch if ch.isalnum() or ch in "_-" else "-" for ch in derived
+            )
+        entries.append(item)
+    return entries
 
 
 def final_message_text(result) -> str | None:
@@ -175,9 +143,7 @@ def parse_entrypoint_doc(text: str) -> EntrypointDoc:
     return EntrypointDoc.model_validate(parsed)
 
 
-def render_outputs(
-    layout: StateLayout, candidates: list[EntrypointCandidate]
-) -> list[dict[str, str]]:
+def render_outputs(layout: StateLayout, slugs: list[str]) -> list[dict[str, str]]:
     """Render the final Markdown from the raw per-entrypoint result files.
 
     Returns the per-entrypoint errors (also written to `_errors.md`) so the
@@ -186,19 +152,19 @@ def render_outputs(
     entries: list[tuple[str, EntrypointDoc]] = []
     errors: list[dict[str, str]] = []
 
-    for candidate in candidates:
-        result_file = layout.results_dir / f"{candidate.slug}.json"
+    for slug in slugs:
+        result_file = layout.results_dir / f"{slug}.json"
         if not result_file.exists():
-            errors.append({"slug": candidate.slug, "error": "no result written by orchestrator"})
+            errors.append({"slug": slug, "error": "no result written by orchestrator"})
             continue
         try:
             doc = parse_entrypoint_doc(result_file.read_text())
         except Exception as exc:  # noqa: BLE001 - surfaced to the user, not swallowed
-            errors.append({"slug": candidate.slug, "error": f"invalid result: {exc}"})
+            errors.append({"slug": slug, "error": f"invalid result: {exc}"})
             continue
-        entries.append((candidate.slug, doc))
-        (layout.entrypoints_dir / f"{candidate.slug}.md").write_text(
-            render_entrypoint_markdown(candidate.slug, doc)
+        entries.append((slug, doc))
+        (layout.entrypoints_dir / f"{slug}.md").write_text(
+            render_entrypoint_markdown(slug, doc)
         )
 
     if layout.errors_json.exists():
@@ -215,9 +181,3 @@ def render_outputs(
     elif errors_file.exists():
         errors_file.unlink()  # clear a stale file from a previous, failed run
     return errors
-
-
-def write_empty_docs(out: Path) -> None:
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "index.md").write_text(render_index([]))
-    (out / "dependencies.md").write_text(render_dependencies([]))

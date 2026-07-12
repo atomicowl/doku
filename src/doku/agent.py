@@ -194,10 +194,10 @@ def build_orchestrator(
     )
 
 
-def invoke_orchestrator(agent, num_candidates: int, display: Any | None = None):
-    """Kick off the dispatch loop. Side effects land on disk under /_state;
-    the returned value is the final graph state (same shape `agent.invoke`
-    returns).
+def invoke_orchestrator(agent, display: Any | None = None):
+    """Kick off the run: agentic discovery, then the documentation dispatch
+    loop. Side effects land on disk under /_state; the returned value is the
+    final graph state (same shape `agent.invoke` returns).
 
     The whole dispatch loop otherwise runs inside a single `eval` tool call
     that doesn't return until every batch is done, so without `display`
@@ -223,9 +223,10 @@ def invoke_orchestrator(agent, num_candidates: int, display: Any | None = None):
             {
                 "role": "user",
                 "content": (
-                    f"There are {num_candidates} entrypoint candidates in "
-                    "/_state/entrypoints.json. Document every single one "
-                    "as instructed."
+                    "Discover every entrypoint (REST APIs, SOAP APIs, Kafka "
+                    "consumers) in the Java/Kotlin codebase mounted at /repo "
+                    "using the discovery subagents, then document every "
+                    "discovered candidate, as instructed."
                 ),
             }
         ]

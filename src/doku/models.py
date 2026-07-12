@@ -1,10 +1,30 @@
-"""Structured output schema produced by the entrypoint-documenter subagent."""
+"""Structured output schemas produced by the subagents."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+class DiscoveredEntrypoint(BaseModel):
+    """One entrypoint found by a discovery subagent."""
+
+    type: Literal["REST", "SOAP", "KAFKA"]
+    file: str = Field(description="Path relative to the repo root, forward-slash separated, no leading /repo/")
+    line: int = Field(description="1-based line number of the handler method declaration")
+    class_name: str
+    method_name: str
+    meta: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Framework specifics: e.g. HTTP method + route, Kafka topics + group id, SOAP namespace/operation",
+    )
+
+
+class DiscoveredEntrypoints(BaseModel):
+    """A discovery subagent's full answer for its entrypoint type."""
+
+    entrypoints: list[DiscoveredEntrypoint] = Field(default_factory=list)
 
 
 class DependencyRef(BaseModel):

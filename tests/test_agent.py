@@ -6,6 +6,7 @@ import pytest
 from deepagents.backends import CompositeBackend, FilesystemBackend
 from deepagents.middleware.skills import _list_skills
 
+from doku.agent import _AGENTS_DIR
 from doku.agent import (
     _load_agent,
     _load_subagents,
@@ -56,6 +57,20 @@ def make_agents_dir(tmp_path: Path, *, with_skills: bool) -> Path:
         (doc / "skills" / "flow-graphs").mkdir(parents=True)
         (doc / "skills" / "flow-graphs" / "SKILL.md").write_text(SKILL_MD)
     return agents
+
+
+def test_shipped_agents_include_discoverers_and_documenter():
+    subagents, _routes = _load_subagents(_AGENTS_DIR)
+    by_name = {s["name"]: s for s in subagents}
+    assert set(by_name) == {
+        "entrypoint-documenter",
+        "kafka-consumer-extractor",
+        "rest-api-extractor",
+        "soap-api-extractor",
+    }
+    for name in ("rest-api-extractor", "soap-api-extractor", "kafka-consumer-extractor"):
+        assert by_name[name]["response_format"].__name__ == "DiscoveredEntrypoints"
+    assert by_name["entrypoint-documenter"]["response_format"].__name__ == "EntrypointDoc"
 
 
 def test_load_subagents_without_skills(tmp_path):
