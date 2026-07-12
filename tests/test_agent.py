@@ -16,6 +16,7 @@ from doku.agent import (
     _skill_mounts,
     build_orchestrator,
 )
+from doku.agent_config import resolve_response_model
 
 SKILL_MD = """\
 ---
@@ -47,7 +48,8 @@ def make_agents_dir(tmp_path: Path, *, with_skills: bool) -> Path:
         'name = "documenter"\n'
         'role = "documenter"\n'
         'description = "Documents one item."\n'
-        'response_format = "EntrypointDoc"\n'
+        'output = "structured"\n'
+        'response_model = "doku.agents.subagents.entrypoint_documenter.models:EntrypointDoc"\n'
         + ('skills = ["skills"]\n' if with_skills else "")
         + '[[permissions]]\n'
         'operations = ["read", "write"]\n'
@@ -61,11 +63,17 @@ def make_agents_dir(tmp_path: Path, *, with_skills: bool) -> Path:
 
     disc = agents / "subagents" / "finder"
     disc.mkdir(parents=True)
+    (disc / "models.py").write_text(
+        "from pydantic import BaseModel, Field\n"
+        "class FoundItems(BaseModel):\n"
+        "    items: list[dict] = Field(default_factory=list)\n"
+    )
     (disc / "config.toml").write_text(
         'name = "finder"\n'
         'role = "discoverer"\n'
         'description = "Finds items."\n'
-        'response_format = "DiscoveredItems"\n'
+        'output = "structured"\n'
+        'response_model = "models:FoundItems"\n'
     )
     (disc / "prompt.md").write_text("Find the items.")
     return agents
@@ -82,7 +90,9 @@ def test_shipped_agents_include_discoverers_and_documenter():
     }
     for name in ("rest-api-extractor", "soap-api-extractor", "kafka-consumer-extractor"):
         assert roles[name] == "discoverer"
-        assert by_name[name]["response_format"].__name__ == "DiscoveredItems"
+    assert by_name["rest-api-extractor"]["response_format"].__name__ == "RestEndpoints"
+    assert by_name["soap-api-extractor"]["response_format"].__name__ == "SoapOperations"
+    assert by_name["kafka-consumer-extractor"]["response_format"].__name__ == "KafkaConsumers"
     assert roles["entrypoint-documenter"] == "documenter"
     assert by_name["entrypoint-documenter"]["response_format"].__name__ == "EntrypointDoc"
 
@@ -207,12 +217,13 @@ def test_fill_orchestrator_prompt_resolves_all_placeholders():
     assert "__" not in filled  # no placeholder left behind
 
 
-def test_missing_role_raises(tmp_path):
+def test_role_is_optional_for_workflow_selected_agents(tmp_path):
     agents_dir = make_agents_dir(tmp_path, with_skills=False)
     config_path = agents_dir / "subagents" / "finder" / "config.toml"
     config_path.write_text(config_path.read_text().replace('role = "discoverer"\n', ""))
-    with pytest.raises(ValueError, match="finder.*must declare role"):
-        _load_subagents(agents_dir)
+    subagents, _routes, roles = _load_subagents(agents_dir)
+    assert "finder" in {agent["name"] for agent in subagents}
+    assert "finder" not in roles
 
 
 def test_build_requires_a_discoverer_and_one_documenter(tmp_path):
@@ -256,3 +267,27 @@ def test_build_orchestrator_with_skills(tmp_path):
         agents_dir=agents_dir,
     )
     assert agent is not None
+
+
+def test_custom_text_agent_loads_without_response_format(tmp_path):
+    agents_dir = make_agents_dir(tmp_path, with_skills=False)
+    custom = agents_dir / "subagents" / "reviewer"
+    custom.mkdir()
+    (custom / "config.toml").write_text(
+        'name = "reviewer"\nrole = "reviewer"\ndescription = "Reviews code."\noutput = "text"\n'
+    )
+    (custom / "prompt.md").write_text("Review the code.")
+    subagents, _routes, roles = _load_subagents(agents_dir)
+    reviewer = next(agent for agent in subagents if agent["name"] == "reviewer")
+    assert "response_format" not in reviewer
+    assert roles["reviewer"] == "reviewer"
+
+
+def test_agent_local_response_model(tmp_path):
+    agent_dir = tmp_path / "reviewer"
+    agent_dir.mkdir()
+    (agent_dir / "models.py").write_text(
+        "from pydantic import BaseModel\nclass Review(BaseModel):\n    summary: str\n"
+    )
+    model = resolve_response_model("models:Review", agent_dir)
+    assert model(summary="ok").summary == "ok"

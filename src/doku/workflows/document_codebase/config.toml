@@ -1,0 +1,22 @@
+name = "document-codebase"
+description = "Discover and document Java/Kotlin application entrypoints."
+prompt = "../../agents/orchestrator/prompt.md"
+subagents = [
+  "rest-api-extractor",
+  "kafka-consumer-extractor",
+  "soap-api-extractor",
+  "entrypoint-documenter",
+]
+output = "text"
+finalizer = "finalize:finalize"
+
+[prompt_variables]
+DOCUMENTER = "entrypoint-documenter"
+DISCOVERERS_LIST = """- `rest-api-extractor` — Finds REST endpoints.
+- `kafka-consumer-extractor` — Finds Kafka consumers.
+- `soap-api-extractor` — Finds SOAP operations."""
+DISCOVERERS_JS = """[
+  {"subagentType":"rest-api-extractor","label":"discover-rest"},
+  {"subagentType":"kafka-consumer-extractor","label":"discover-kafka"},
+  {"subagentType":"soap-api-extractor","label":"discover-soap"}
+]"""

@@ -153,11 +153,13 @@ class RunDisplay:
         total: int | None = None,
         log_path: Path | None = None,
         preview_chars: int = 220,
+        title: str = "running workflow",
     ):
         self.console = console or Console(highlight=False)
         self.log_path = log_path
         self._total = total
         self._preview = preview_chars
+        self._title = title
         self._dispatches: dict[str, _Dispatch] = {}
         self._by_namespace: dict[tuple, _Dispatch] = {}
         self.dispatched = 0
@@ -226,7 +228,7 @@ class RunDisplay:
         header = Text()
         header.append("➜ ", style=GRAY_PROMPT)
         header.append("doku", style=f"bold {ACCENT}")
-        header.append(" — documenting entrypoints", style=GRAY_TASK)
+        header.append(f" — {self._title}", style=GRAY_TASK)
 
         running = len(self._running.tasks)
         stats = Text(style=GRAY_STATS)

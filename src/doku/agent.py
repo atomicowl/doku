@@ -10,7 +10,6 @@ agent in `agents/orchestrator/`, one folder per subagent in
 from __future__ import annotations
 
 import json
-import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +20,8 @@ from langchain.chat_models import init_chat_model
 from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_quickjs import CodeInterpreterMiddleware
 
-from doku import models
+from doku.agent_config import AgentConfig, resolve_response_model
+from doku.workflow import LoadedWorkflow
 
 _AGENTS_DIR = Path(__file__).parent / "agents"
 
@@ -30,18 +30,20 @@ _AGENTS_DIR = Path(__file__).parent / "agents"
 DEFAULT_INTERPRETER_TIMEOUT_SECONDS = 900.0
 
 
-def _load_agent(agent_dir: Path) -> tuple[dict[str, Any], str]:
-    config = tomllib.loads((agent_dir / "config.toml").read_text())
+def _load_agent(agent_dir: Path) -> tuple[AgentConfig, str]:
+    import tomllib
+
+    config = AgentConfig.model_validate(tomllib.loads((agent_dir / "config.toml").read_text()))
     prompt = (agent_dir / "prompt.md").read_text()
     return config, prompt
 
 
-def _permissions(config: dict[str, Any], skill_sources: list[str]) -> list[FilesystemPermission]:
+def _permissions(config: AgentConfig, skill_sources: list[str]) -> list[FilesystemPermission]:
     """Config permissions, with the agent's skill mounts made readable and
     read-only up front (rules are first-match-wins, so these can't be undone
     by broad rules in the config).
     """
-    permissions = [FilesystemPermission(**p) for p in config.get("permissions", [])]
+    permissions = [FilesystemPermission(**p.model_dump()) for p in config.permissions]
     if skill_sources:
         # Mount points listed alongside the "/**" globs for the same reason
         # as "/repo" below: the glob doesn't match the mount point itself.
@@ -55,7 +57,7 @@ def _permissions(config: dict[str, Any], skill_sources: list[str]) -> list[Files
 
 
 def _skill_mounts(
-    agent_name: str, agent_dir: Path, config: dict[str, Any]
+    agent_name: str, agent_dir: Path, config: AgentConfig
 ) -> tuple[dict[str, FilesystemBackend], list[str]]:
     """Resolve the config's `skills` source dirs (relative to the agent's
     folder) into read-only backend mounts under /skills/<agent-name>/ plus the
@@ -63,7 +65,7 @@ def _skill_mounts(
     """
     routes: dict[str, FilesystemBackend] = {}
     sources: list[str] = []
-    for rel in config.get("skills", []):
+    for rel in config.skills:
         host_dir = (agent_dir / rel).resolve()
         if not host_dir.is_dir():
             raise FileNotFoundError(
@@ -75,11 +77,8 @@ def _skill_mounts(
     return routes, sources
 
 
-_ROLES = ("discoverer", "documenter")
-
-
 def _load_subagents(
-    agents_dir: Path,
+    agents_dir: Path, selected_names: set[str] | None = None,
 ) -> tuple[list[SubAgent], dict[str, FilesystemBackend], dict[str, str]]:
     """Load every subagent folder; returns (subagents, skill routes, roles).
 
@@ -94,26 +93,29 @@ def _load_subagents(
     for agent_dir in sorted((agents_dir / "subagents").iterdir()):
         if not (agent_dir / "config.toml").is_file():
             continue
+        if selected_names is not None and not (
+            agent_dir.name in selected_names
+            or agent_dir.name.replace("_", "-") in selected_names
+        ):
+            continue
         config, prompt = _load_agent(agent_dir)
-        role = config.get("role")
-        if role not in _ROLES:
-            raise ValueError(
-                f"subagent '{config['name']}' ({agent_dir}) must declare role = "
-                f"{' | '.join(_ROLES)}, got {role!r}"
-            )
-        roles[config["name"]] = role
-        skill_routes, skill_sources = _skill_mounts(config["name"], agent_dir, config)
+        if selected_names is not None and config.name not in selected_names:
+            continue
+        role = config.role
+        if role:
+            roles[config.name] = role
+        skill_routes, skill_sources = _skill_mounts(config.name, agent_dir, config)
         routes.update(skill_routes)
         subagent: SubAgent = {
-            "name": config["name"],
-            "description": config["description"],
+            "name": config.name,
+            "description": config.description or "",
             "system_prompt": prompt,
             "permissions": _permissions(config, skill_sources),
         }
         if skill_sources:
             subagent["skills"] = skill_sources
-        if "response_format" in config:
-            subagent["response_format"] = getattr(models, config["response_format"])
+        if config.output == "structured":
+            subagent["response_format"] = resolve_response_model(config.model_reference, agent_dir)
         subagents.append(subagent)
     return subagents, routes, roles
 
@@ -208,7 +210,7 @@ def build_orchestrator(
     """
     orchestrator_config, orchestrator_template = _load_agent(agents_dir / "orchestrator")
     orchestrator_routes, orchestrator_skills = _skill_mounts(
-        orchestrator_config["name"], agents_dir / "orchestrator", orchestrator_config
+        orchestrator_config.name, agents_dir / "orchestrator", orchestrator_config
     )
     subagents, subagent_routes, roles = _load_subagents(agents_dir)
 
@@ -253,7 +255,70 @@ def build_orchestrator(
     )
 
 
-def invoke_orchestrator(agent, display: Any | None = None):
+def build_workflow_agent(
+    *,
+    workflow: LoadedWorkflow,
+    repo_path: Path,
+    output_dir: Path,
+    agents_dir: Path,
+    model: str,
+    api_key: str,
+    api_base: str,
+    concurrency: int,
+    chat_completions: bool = False,
+    model_rps: float | None = None,
+    model_burst: int = 1,
+    max_retries: int | None = None,
+    interpreter_timeout: float = DEFAULT_INTERPRETER_TIMEOUT_SECONDS,
+):
+    """Build a task-agnostic workflow orchestrator.
+
+    The workflow owns its prompt, output contract, and exact subagent
+    allowlist. The harness only supplies execution, model, and filesystem
+    facilities.
+    """
+    requested = set(workflow.config.subagents)
+    available, routes, _roles = _load_subagents(agents_dir, selected_names=requested)
+    by_name = {agent["name"]: agent for agent in available}
+    missing = [name for name in workflow.config.subagents if name not in by_name]
+    if missing:
+        raise ValueError(
+            f"workflow '{workflow.config.name}' references missing subagent(s): "
+            f"{', '.join(missing)}"
+        )
+    selected = [by_name[name] for name in workflow.config.subagents]
+
+    repo_backend = FilesystemBackend(root_dir=str(repo_path), virtual_mode=True)
+    output_backend = FilesystemBackend(root_dir=str(output_dir), virtual_mode=True)
+    backend = CompositeBackend(
+        default=output_backend,
+        routes={"/repo/": repo_backend, **routes},
+    )
+    permissions = [
+        FilesystemPermission(operations=["write"], paths=["/repo/**"], mode="deny")
+    ]
+    kwargs: dict[str, Any] = {}
+    if workflow.response_model is not None:
+        kwargs["response_format"] = workflow.response_model
+    return create_deep_agent(
+        model=_resolve_model(
+            model, api_key, api_base, chat_completions, model_rps, model_burst, max_retries
+        ),
+        system_prompt=workflow.prompt(CONCURRENCY=concurrency),
+        subagents=selected,
+        middleware=[
+            CodeInterpreterMiddleware(
+                timeout=interpreter_timeout,
+                ptc=["read_file", "write_file"],
+            )
+        ],
+        backend=backend,
+        permissions=permissions,
+        **kwargs,
+    )
+
+
+def invoke_orchestrator(agent, display: Any | None = None, request: str | None = None):
     """Kick off the run: agentic discovery, then the documentation dispatch
     loop. Side effects land on disk under /_state; the returned value is the
     final graph state (same shape `agent.invoke` returns).
@@ -282,9 +347,8 @@ def invoke_orchestrator(agent, display: Any | None = None):
             {
                 "role": "user",
                 "content": (
-                    "Run every discovery subagent over the codebase mounted "
-                    "at /repo, then document every discovered item, as "
-                    "instructed."
+                    request
+                    or "Run the configured workflow over the codebase mounted at /repo."
                 ),
             }
         ]

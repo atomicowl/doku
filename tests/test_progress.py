@@ -354,7 +354,7 @@ def test_live_dashboard_on_forced_terminal(tmp_path):
     out = console.file.getvalue()
     # "doku" and the tagline are separately styled spans, so match each part
     assert "doku" in out
-    assert "— documenting entrypoints" in out
+    assert "— running workflow" in out
     assert "rest-Foo-bar" in out
     assert "SUBAGENT" in out  # Agent Console table header
     assert "orchestrator" in out  # main agent row

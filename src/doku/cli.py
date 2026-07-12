@@ -9,14 +9,11 @@ from pathlib import Path
 import typer
 from dotenv import find_dotenv, load_dotenv
 
-from doku.agent import build_orchestrator, invoke_orchestrator
+from doku.agent import _AGENTS_DIR, build_workflow_agent, invoke_orchestrator
 from doku.progress import RunDisplay
-from doku.state import (
-    StateLayout,
-    final_message_text,
-    read_manifest,
-    render_outputs,
-)
+from doku.workflow import discover_named, final_message_text, load_workflow
+
+_WORKFLOWS_DIR = Path(__file__).parent / "workflows"
 
 # At import time so the values are in place before Typer resolves envvar-bound
 # options like DOKU_MODEL. Searches from the working directory upward; real
@@ -86,10 +83,12 @@ def analyze(
     repo: Path = typer.Argument(..., exists=True, file_okay=False, help="Path to the target codebase."),
     out: Path = typer.Option(Path("docs"), "--out", "-o", help="Directory to write generated docs to."),
     model: str | None = typer.Option(None, "--model", envvar="DOKU_MODEL", help="LLM model id, e.g. openrouter:z-ai/glm-5.2. Required (no default): pass the flag or set DOKU_MODEL."),
-    concurrency: int = typer.Option(5, "--concurrency", help="Max entrypoints documented in parallel."),
+    concurrency: int = typer.Option(5, "--concurrency", help="Workflow concurrency parameter."),
     chat_completions: bool = typer.Option(False, "--chat-completions", envvar="DOKU_CHAT_COMPLETIONS", help="With openai:* models, use the plain Chat Completions API instead of the OpenAI Responses API — needed for OpenAI-compatible servers (vLLM, Ollama, gateways)."),
+    workflow: str = typer.Option("document-codebase", "--workflow", "-w", help="Bundled workflow name or path to a workflow directory."),
+    agents_dir: Path = typer.Option(_AGENTS_DIR, "--agents-dir", envvar="DOKU_AGENTS_DIR", help="Directory containing subagents."),
 ) -> None:
-    """Discover entrypoints in REPO and generate documentation into OUT."""
+    """Run a configured agent workflow over REPO."""
     api_key = os.environ.get("DOKU_API_KEY")
     api_base = os.environ.get("DOKU_API_BASE")
     missing = [name for name, value in [("DOKU_API_KEY", api_key), ("DOKU_API_BASE", api_base)] if not value]
@@ -113,14 +112,23 @@ def analyze(
     repo = repo.resolve()
     out = out.resolve()
 
-    layout = StateLayout(out)
-    layout.ensure_dirs()
+    try:
+        loaded_workflow = load_workflow(discover_named(_WORKFLOWS_DIR, workflow))
+    except Exception as exc:  # noqa: BLE001 - configuration error for the operator
+        typer.echo(f"Invalid workflow: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    out.mkdir(parents=True, exist_ok=True)
+    state_dir = out / "_state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    log_path = state_dir / "run.log"
 
-    _echo(f"Dispatching {model} orchestrator (concurrency={concurrency})...")
-    _echo(f"Full activity log: {layout.log_path}")
-    agent = build_orchestrator(
+    _echo(f"Dispatching {model} workflow '{loaded_workflow.config.name}' (concurrency={concurrency})...")
+    _echo(f"Full activity log: {log_path}")
+    agent = build_workflow_agent(
+        workflow=loaded_workflow,
         repo_path=repo,
-        docs_dir=out,
+        output_dir=out,
+        agents_dir=agents_dir.resolve(),
         model=model,
         api_key=api_key,
         api_base=api_base,
@@ -132,7 +140,7 @@ def analyze(
     )
     # Total is unknown up front: the orchestrator's discovery subagents find
     # the candidates during the run, so the display counts without a bar cap.
-    display = RunDisplay(log_path=layout.log_path)
+    display = RunDisplay(log_path=log_path, title=loaded_workflow.config.name)
     with display:
         result = invoke_orchestrator(agent, display=display)
     _echo(f"{display.completed} completed, {display.failed} failed.")
@@ -140,12 +148,11 @@ def analyze(
     if summary:
         _echo(f"Agent summary: {summary}")
 
-    candidates = read_manifest(layout)
-    _echo(f"Discovered {len(candidates)} entrypoint(s).")
-    errors = render_outputs(layout, [candidate["slug"] for candidate in candidates])
-    if errors:
-        _echo(f"{len(errors)} entrypoint(s) failed to document; see _errors.md")
-    _echo(f"Docs written to {out}")
+    if loaded_workflow.finalizer:
+        final = loaded_workflow.finalizer(out, result)
+        if isinstance(final, dict) and final.get("message"):
+            _echo(final["message"])
+    _echo(f"Workflow output written to {out}")
 
     # deepagents/langchain_quickjs leave background threads (HTTP connection
     # pools, the QuickJS worker, ...) that don't get joined on their own, so

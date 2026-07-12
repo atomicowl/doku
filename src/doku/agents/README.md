@@ -2,22 +2,51 @@
 
 Each agent lives in its own folder with two files:
 
-- `config.toml` — name, `role` (subagents only), description,
-  `response_format` (a model name from `doku.models`), filesystem
+- `config.toml` — name, optional legacy `role`, description, output contract, filesystem
   `permissions`, and optional `skills`.
 - `prompt.md` — the agent's system prompt.
 
 ## Roles
 
-Every subagent declares a `role`, and the orchestrator's run flow is derived
-from the folders on disk — no code or prompt edits needed to add an agent:
+The bundled documentation workflow still uses these legacy role labels:
 
-- `role = "discoverer"` — dispatched in parallel in phase 1. Returns
-  `DiscoveredItems`: a list of `{kind, name, file, line, meta}` items. The
-  pipeline is task-agnostic — items can be REST endpoints, Kafka consumers,
-  cron jobs, feature flags, anything worth documenting.
+- `role = "discoverer"` — dispatched in parallel in phase 1. Each discoverer
+  may own a local Pydantic schema; the orchestrator normalizes its records to
+  the common `{kind, name, file, line, meta}` manifest shape.
 - `role = "documenter"` — exactly one; dispatched once per discovered item in
   phase 2 with the item's source inlined.
+
+New workflows select subagents explicitly by name, so their agents do not
+need a `role`.
+
+## Output contracts
+
+Text agents declare:
+
+```toml
+output = "text"
+```
+
+Structured agents declare a Pydantic model:
+
+```toml
+output = "structured"
+response_model = "models:MyResult"
+```
+
+The model reference may be a fully qualified `package.module:Class` or an
+agent-local module such as `models:MyResult` (resolved from `models.py` beside
+the config). The legacy `response_format` key remains accepted, but its value
+must also include the module.
+
+Create and validate agents with:
+
+```bash
+uv run doku-agent create my-reviewer --output text --role custom
+uv run doku-agent create my-extractor --output structured \
+  --model models:MyResult --role custom
+uv run doku-agent validate
+```
 
 The orchestrator's `prompt.md` is a template: `__DISCOVERERS_LIST__`,
 `__DISCOVERERS_JS__`, `__DOCUMENTER__`, and `__CONCURRENCY__` are filled at

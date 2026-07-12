@@ -32,7 +32,7 @@ def clean_env(monkeypatch):
 
 
 class _StopAtBuild(Exception):
-    """Raised by the stubbed build_orchestrator: candidates were discovered
+    """Raised by the stubbed workflow builder: configuration was resolved
     and the model/credentials resolved — everything past this point needs an
     LLM."""
 
@@ -45,7 +45,7 @@ def captured_build(monkeypatch):
         captured.update(kwargs)
         raise _StopAtBuild
 
-    monkeypatch.setattr(cli, "build_orchestrator", fake_build)
+    monkeypatch.setattr(cli, "build_workflow_agent", fake_build)
     return captured
 
 

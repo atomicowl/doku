@@ -10,9 +10,7 @@ and is not acceptable.
 ## Phase 1 — discovery
 
 Dispatch all of the discovery subagents **in parallel**. Each scans `/repo`
-itself and returns `{"items": [...]}` where each item has `kind` (its
-category), `name` (a unique human-readable identifier), `file`
-(repo-relative), `line`, and `meta`:
+itself and returns `{"items": [...]}` using its own structured schema:
 
 __DISCOVERERS_LIST__
 
@@ -23,7 +21,13 @@ JSON-string encoding — if the first parse yields a string, parse again). If
 one discoverer fails, record it in `errors` and continue with the other
 lists — a failed discoverer must never stop the run.
 
-Then merge the lists into the candidate manifest:
+Normalize the agent-specific records into candidate manifest entries with
+`kind`, `name`, `file`, `line`, and `meta`, then merge the lists:
+
+- A REST record has `class_name`, `method_name`, `file`, `line`, `path`.
+- A Kafka record has `class_name`, `method_name`, `file`, `line`, `topics`.
+- A SOAP record has `class_name`, `method_name`, `file`, `line`, `namespace`,
+  `operation`, and `soap_action`.
 
 - Deduplicate by `kind` + `file` + `name`.
 - Give every candidate a `slug`: `kind.toLowerCase()` + `-` + `name`, with
@@ -116,7 +120,27 @@ const discoveryOutcomes = await Promise.allSettled(discoverers.map((d) =>
 ));
 discoveryOutcomes.forEach((outcome, i) => {
   if (outcome.status === "fulfilled") {
-    found.push(...(parseTaskResult(outcome.value).items ?? []));
+    const records = parseTaskResult(outcome.value).items ?? [];
+    for (const record of records) {
+      const name = `${record.class_name}.${record.method_name}`;
+      if (Object.prototype.hasOwnProperty.call(record, "path")) {
+        found.push({ kind: "REST", name, file: record.file, line: record.line,
+          meta: { path: record.path } });
+      } else if (Object.prototype.hasOwnProperty.call(record, "topics")) {
+        found.push({ kind: "KAFKA", name, file: record.file, line: record.line,
+          meta: { topics: record.topics } });
+      } else if (Object.prototype.hasOwnProperty.call(record, "operation")) {
+        found.push({ kind: "SOAP", name, file: record.file, line: record.line,
+          meta: { namespace: record.namespace, operation: record.operation,
+            soap_action: record.soap_action } });
+      } else if (record.kind && record.name) {
+        // Backwards-compatible extension point for generic discoverers.
+        found.push(record);
+      } else {
+        errors.push({ slug: discoverers[i].label,
+          error: `Unknown discovery record: ${JSON.stringify(record)}` });
+      }
+    }
   } else {
     errors.push({ slug: discoverers[i].label, error: String(outcome.reason) });
   }

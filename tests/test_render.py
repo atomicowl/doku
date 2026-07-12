@@ -1,4 +1,4 @@
-from doku.models import DependencyRef, EntrypointDoc
+from doku.agents.subagents.entrypoint_documenter.models import DependencyRef, EntrypointDoc
 from doku.render import (
     render_dependencies,
     render_entrypoint_markdown,

@@ -20,11 +20,10 @@ Markers to search for (Java and Kotlin use the same annotations):
   functional consumers: `Consumer<...>`/`Function<...>` beans bound to Kafka
   in the configuration.
 
-One result entry per handler **method** (not per class): `kind` = `"KAFKA"`,
-`name` = `ClassName.methodName`, `file` (repo-relative, no `/repo/` prefix),
-`line` (1-based, of the method declaration), and `meta` with what you
-learned: `topics` (list), `group_id` when declared, `container_factory` if set —
-resolve `${...}` placeholders from application config files
+One result entry per handler **method** (not per class), with `class_name`,
+`method_name`, `file` (repo-relative, no `/repo/` prefix), `line` (1-based,
+of the method declaration), and `topics` (a list). Resolve `${...}` topic
+placeholders from application config files
 (`application.yml`/`.yaml`/`.properties`) when you can, otherwise report the
 placeholder as-is.
 

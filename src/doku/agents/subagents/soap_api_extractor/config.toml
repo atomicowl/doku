@@ -2,10 +2,11 @@ name = "soap-api-extractor"
 role = "discoverer"
 description = """Scans the Java/Kotlin codebase under /repo and returns the \
 complete list of SOAP API operations (Spring-WS, JAX-WS/CXF) as structured \
-DiscoveredItems."""
+SoapOperations."""
 
-# Pydantic model from doku.models the subagent's final answer is coerced into.
-response_format = "DiscoveredItems"
+# Agent-local Pydantic model the final answer is coerced into.
+output = "structured"
+response_model = "models:SoapOperations"
 
 # "/repo" itself is listed too: the "/repo/**" glob matches files under the
 # mount but not the mount point, which would deny `ls` on the repo root — the

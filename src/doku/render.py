@@ -7,7 +7,7 @@ hands entirely, so output is consistent regardless of what the model does.
 
 from __future__ import annotations
 
-from doku.models import EntrypointDoc
+from doku.agents.subagents.entrypoint_documenter.models import EntrypointDoc
 
 
 def render_entrypoint_markdown(slug: str, doc: EntrypointDoc) -> str:

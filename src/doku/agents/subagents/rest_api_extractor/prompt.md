@@ -21,11 +21,9 @@ Markers to search for (Java and Kotlin use the same annotations):
 - **JAX-RS** (Jakarta or javax): classes/methods with `@Path`, methods with
   `@GET`, `@POST`, `@PUT`, `@DELETE`, `@PATCH`, `@HEAD`, `@OPTIONS`.
 
-One result entry per handler **method** (not per class): `kind` = `"REST"`,
-`name` = `ClassName.methodName`, `file` (repo-relative, no `/repo/` prefix),
-`line` (1-based, of the method declaration), and `meta` with what you
-learned: `http_method`, `path` (class prefix + method route joined), and
-`consumes`/`produces` when declared.
+One result entry per handler **method** (not per class), with `class_name`,
+`method_name`, `file` (repo-relative, no `/repo/` prefix), `line` (1-based,
+of the method declaration), and `path` (class prefix + method route joined).
 
 Ground every entry in code you actually read — never infer an endpoint from a
 file name or a comment. If the repo has no REST endpoints, return an empty

@@ -14,8 +14,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from doku.models import EntrypointDoc
-from doku.progress import text_of
+from doku.agents.subagents.entrypoint_documenter.models import EntrypointDoc
 from doku.render import (
     render_dependencies,
     render_entrypoint_markdown,
@@ -94,16 +93,6 @@ def read_manifest(layout: StateLayout) -> list[dict]:
             )
         entries.append(item)
     return entries
-
-
-def final_message_text(result) -> str | None:
-    """The orchestrator's final summary message, if it produced one."""
-    messages = result.get("messages") if isinstance(result, dict) else None
-    if not messages:
-        return None
-    last = messages[-1]
-    content = getattr(last, "content", None) if not isinstance(last, dict) else last.get("content")
-    return text_of(content) or None
 
 
 _ENTRYPOINT_DOC_FIELDS = set(EntrypointDoc.model_fields)

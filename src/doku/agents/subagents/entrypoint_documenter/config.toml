@@ -4,8 +4,9 @@ description = """Given one discovered item (kind, name, file:line, metadata), \
 reads the code under /repo and returns a structured EntrypointDoc: \
 input/output model, mermaid flow graph, and external dependencies."""
 
-# Pydantic model from doku.models the subagent's final answer is coerced into.
-response_format = "EntrypointDoc"
+# Agent-local Pydantic model the final answer is coerced into.
+output = "structured"
+response_model = "models:EntrypointDoc"
 
 # Skill source directories, relative to this agent's folder; each subdirectory
 # of a source is one skill (a folder with a SKILL.md). Sources are mounted

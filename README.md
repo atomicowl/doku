@@ -1,6 +1,7 @@
 # doku
 
-AI agent harness that scans a codebase, finds its entrypoints (REST APIs, SOAP
+Task-agnostic AI agent workflow harness. Its bundled `document-codebase`
+workflow scans a codebase, finds its entrypoints (REST APIs, SOAP
 APIs, Kafka consumers), and generates documentation for each one: input/output
 models, a flow graph (decision points, external calls), and the external
 dependencies it touches (databases, caches, REST/SOAP clients, Kafka topics).
@@ -37,6 +38,24 @@ consulted).
 
 ```bash
 uv run doku /path/to/target-repo --out ./docs
+```
+
+Select a bundled workflow by name or load one directly from a directory:
+
+```bash
+uv run doku /path/to/repo --workflow document-codebase
+uv run doku /path/to/repo --workflow ./workflows/my_review \
+  --agents-dir ./agents
+```
+
+A workflow folder contains `config.toml` and `prompt.md`. Its config explicitly
+allowlists the subagents it may spawn and may declare a local Pydantic response
+model and finalizer. Create and validate external workflows without rebuilding
+the harness:
+
+```bash
+uv run doku-workflow create my-review
+uv run doku-workflow validate workflows/my_review --agents-dir ./agents
 ```
 
 Options:

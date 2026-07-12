@@ -19,6 +19,8 @@ dependencies = [
 
 [project.scripts]
 doku = "doku.cli:app"
+doku-agent = "doku.agent_cli:app"
+doku-workflow = "doku.workflow_cli:app"
 
 [build-system]
 requires = ["uv_build>=0.11.26,<0.12.0"]
