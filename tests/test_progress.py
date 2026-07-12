@@ -348,6 +348,9 @@ def test_live_dashboard_on_forced_terminal(tmp_path):
         _start_dispatch(display)
         display.on_values(NS, {"messages": [_FakeHumanMessage(PROMPT)]})
         display.on_subagent_event({"phase": "complete", "id": "a1", "duration_ms": 100})
+        # screen=True paints on the refresh-thread tick; force one frame so
+        # this sub-millisecond test captures a render at all
+        display._live.refresh()
     out = console.file.getvalue()
     # "doku" and the tagline are separately styled spans, so match each part
     assert "doku" in out

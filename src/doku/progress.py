@@ -45,6 +45,7 @@ from typing import Any
 
 from rich import box
 from rich.console import Console, Group
+from rich.layout import Layout
 from rich.panel import Panel
 from rich.progress import (
     Progress,
@@ -199,8 +200,11 @@ class RunDisplay:
         if self.console.is_terminal:
             from rich.live import Live
 
+            # screen=True takes over the whole terminal (alternate screen
+            # buffer, like htop) and restores it on exit; the Layout in
+            # `_render` pins the tail pane and footer to the bottom edge.
             self._live = Live(
-                self._render(), console=self.console, refresh_per_second=6
+                self._render(), console=self.console, refresh_per_second=6, screen=True
             )
             self._live.start()
         return self
@@ -217,7 +221,7 @@ class RunDisplay:
 
     # -- dashboard (Agent Console design) ------------------------------------
 
-    def _render(self) -> Group:
+    def _render(self) -> Layout:
         # prompt / global status
         header = Text()
         header.append("➜ ", style=GRAY_PROMPT)
@@ -291,6 +295,7 @@ class RunDisplay:
             Group(*self._log_tail) if self._log_tail else Text("…", style=GRAY_TS),
             border_style=PANE_BORDER,
             padding=(0, 1),
+            height=LOG_TAIL_LINES + 2,
         )
 
         footer = Text()
@@ -300,15 +305,19 @@ class RunDisplay:
         )
         footer.append(" ▊", style=f"blink {ACCENT}")
 
-        return Group(
-            header,
-            stats,
-            table,
-            Rule(characters="─", style=DIVIDER),
-            tail_header,
-            tail_pane,
-            footer,
+        # full-screen layout: header/stats on top, the agent table filling
+        # the middle, and the log tail + footer pinned to the bottom edge
+        layout = Layout()
+        layout.split_column(
+            Layout(Group(header, stats), size=2),
+            Layout(table),
+            Layout(
+                Group(Rule(characters="─", style=DIVIDER), tail_header, tail_pane),
+                size=LOG_TAIL_LINES + 4,
+            ),
+            Layout(footer, size=1),
         )
+        return layout
 
     def _refresh(self) -> None:
         if self._live is not None:
