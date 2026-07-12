@@ -49,11 +49,13 @@ Options:
 
 Environment variables (all required, settable in `.env`): `DOKU_API_KEY`
 (LLM provider API key), `DOKU_API_BASE` (provider base URL), `DOKU_MODEL`
-(model id, unless `--model` is passed). Optional: `DOKU_CHAT_COMPLETIONS`,
-and `DOKU_MODEL_RPS` / `DOKU_MODEL_BURST` — rate-limit LLM requests to at
+(model id, unless `--model` is passed). Optional: `DOKU_CHAT_COMPLETIONS`;
+`DOKU_MODEL_RPS` / `DOKU_MODEL_BURST` — rate-limit LLM requests to at
 most RPS request starts per second with bursts up to BURST (default `1`);
 the limit is shared by the orchestrator and all parallel subagents, so it
-caps the whole run regardless of `--concurrency`. Unset means no limit.
+caps the whole run regardless of `--concurrency`, and unset means no limit;
+`DOKU_MODEL_MAX_RETRIES` — retries per request inside the provider client
+(`0` disables retrying, unset keeps the provider's default).
 
 ### Custom OpenAI-compatible providers
 

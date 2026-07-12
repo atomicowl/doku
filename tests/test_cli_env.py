@@ -26,6 +26,7 @@ def clean_env(monkeypatch):
         "DOKU_CHAT_COMPLETIONS",
         "DOKU_MODEL_RPS",
         "DOKU_MODEL_BURST",
+        "DOKU_MODEL_MAX_RETRIES",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -96,10 +97,20 @@ def test_chat_completions_defaults_off_and_env_enables_it(captured_build, tmp_pa
     assert captured["chat_completions"] is True
 
 
-def test_rate_limit_disabled_by_default(captured_build, tmp_path):
+def test_model_tuning_disabled_by_default(captured_build, tmp_path):
     captured = _run(captured_build, [FIXTURE_REPO, "--out", str(tmp_path)], env={"DOKU_MODEL": "openai:m"})
     assert captured["model_rps"] is None
     assert captured["model_burst"] == 1
+    assert captured["max_retries"] is None
+
+
+def test_max_retries_from_env(captured_build, tmp_path):
+    captured = _run(
+        captured_build,
+        [FIXTURE_REPO, "--out", str(tmp_path)],
+        env={"DOKU_MODEL": "openai:m", "DOKU_MODEL_MAX_RETRIES": "0"},
+    )
+    assert captured["max_retries"] == 0
 
 
 def test_rate_limit_from_env(captured_build, tmp_path):
@@ -119,6 +130,8 @@ def test_rate_limit_from_env(captured_build, tmp_path):
         ({"DOKU_MODEL_RPS": "0"}, "DOKU_MODEL_RPS must be a positive number, got '0'."),
         ({"DOKU_MODEL_RPS": "1", "DOKU_MODEL_BURST": "0"}, "DOKU_MODEL_BURST must be a positive integer, got '0'."),
         ({"DOKU_MODEL_BURST": "5"}, "DOKU_MODEL_BURST requires DOKU_MODEL_RPS to be set."),
+        ({"DOKU_MODEL_MAX_RETRIES": "-1"}, "DOKU_MODEL_MAX_RETRIES must be a non-negative integer, got '-1'."),
+        ({"DOKU_MODEL_MAX_RETRIES": "many"}, "DOKU_MODEL_MAX_RETRIES must be a non-negative integer, got 'many'."),
     ],
 )
 def test_stops_on_invalid_rate_limit(captured_build, tmp_path, env, message):

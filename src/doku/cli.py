@@ -31,16 +31,20 @@ app = typer.Typer(add_completion=False)
 DETECTORS = [JavaSpringDetector()]
 
 
-def _parse_rate_limit(errors: list[str]) -> tuple[float | None, int]:
-    """Optional model rate limit from DOKU_MODEL_RPS / DOKU_MODEL_BURST.
+def _parse_model_tuning(errors: list[str]) -> tuple[float | None, int, int | None]:
+    """Optional model tuning from DOKU_MODEL_RPS / DOKU_MODEL_BURST /
+    DOKU_MODEL_MAX_RETRIES.
 
-    Unset means no rate limiting. Invalid values are reported into `errors`
-    (same stop-with-a-clear-message treatment as the required settings).
+    Unset means no rate limiting / the provider's own retry default. Invalid
+    values are reported into `errors` (same stop-with-a-clear-message
+    treatment as the required settings).
     """
     rps_raw = os.environ.get("DOKU_MODEL_RPS")
     burst_raw = os.environ.get("DOKU_MODEL_BURST")
+    retries_raw = os.environ.get("DOKU_MODEL_MAX_RETRIES")
     model_rps: float | None = None
     model_burst = 1
+    max_retries: int | None = None
     if rps_raw:
         try:
             model_rps = float(rps_raw)
@@ -59,7 +63,17 @@ def _parse_rate_limit(errors: list[str]) -> tuple[float | None, int]:
         if model_burst < 1:
             errors.append(f"DOKU_MODEL_BURST must be a positive integer, got {burst_raw!r}.")
             model_burst = 1
-    return model_rps, model_burst
+    if retries_raw:
+        try:
+            max_retries = int(retries_raw)
+        except ValueError:
+            max_retries = -1
+        if max_retries < 0:
+            errors.append(
+                f"DOKU_MODEL_MAX_RETRIES must be a non-negative integer, got {retries_raw!r}."
+            )
+            max_retries = None
+    return model_rps, model_burst, max_retries
 
 
 def _echo(message: str) -> None:
@@ -85,7 +99,7 @@ def analyze(
     api_base = os.environ.get("DOKU_API_BASE")
     missing = [name for name, value in [("DOKU_API_KEY", api_key), ("DOKU_API_BASE", api_base)] if not value]
     errors = []
-    model_rps, model_burst = _parse_rate_limit(errors)
+    model_rps, model_burst, max_retries = _parse_model_tuning(errors)
     if missing:
         errors.append(
             f"Missing required environment variable(s): {', '.join(missing)}.\n"
@@ -128,6 +142,7 @@ def analyze(
         chat_completions=chat_completions,
         model_rps=model_rps,
         model_burst=model_burst,
+        max_retries=max_retries,
     )
     display = RunDisplay(total=len(candidates), log_path=layout.log_path)
     with display:

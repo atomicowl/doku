@@ -104,6 +104,7 @@ def _resolve_model(
     chat_completions: bool = False,
     model_rps: float | None = None,
     model_burst: int = 1,
+    max_retries: int | None = None,
 ):
     """Build the chat model with explicit credentials (no provider env-var
     fallbacks), keeping deepagents' provider-profile kwargs (e.g. OpenRouter
@@ -119,6 +120,9 @@ def _resolve_model(
     that many per second, with bursts of up to `model_burst`. The orchestrator
     and every subagent share this one model instance, so the cap is global
     across the whole run regardless of `--concurrency`.
+
+    `max_retries` caps the provider client's retries per request (0 disables
+    retrying); unset keeps the provider's own default.
     """
     kwargs = {**apply_provider_profile(model), "api_key": api_key, "base_url": api_base}
     if chat_completions and "use_responses_api" in kwargs:
@@ -127,6 +131,8 @@ def _resolve_model(
         kwargs["rate_limiter"] = InMemoryRateLimiter(
             requests_per_second=model_rps, max_bucket_size=model_burst
         )
+    if max_retries is not None:
+        kwargs["max_retries"] = max_retries
     return init_chat_model(model, **kwargs)
 
 
@@ -141,6 +147,7 @@ def build_orchestrator(
     chat_completions: bool = False,
     model_rps: float | None = None,
     model_burst: int = 1,
+    max_retries: int | None = None,
     interpreter_timeout: float = DEFAULT_INTERPRETER_TIMEOUT_SECONDS,
     agents_dir: Path = _AGENTS_DIR,
 ):
@@ -170,7 +177,9 @@ def build_orchestrator(
     )
 
     return create_deep_agent(
-        model=_resolve_model(model, api_key, api_base, chat_completions, model_rps, model_burst),
+        model=_resolve_model(
+            model, api_key, api_base, chat_completions, model_rps, model_burst, max_retries
+        ),
         system_prompt=orchestrator_prompt,
         subagents=subagents,
         skills=orchestrator_skills or None,

@@ -148,6 +148,16 @@ def test_no_rate_limiter_by_default():
     assert model.rate_limiter is None
 
 
+def test_max_retries_set_when_configured():
+    model = _resolve_model("openrouter:z-ai/glm-5.2", "k", "https://x/api/v1", max_retries=0)
+    assert model.max_retries == 0
+
+
+def test_max_retries_keeps_provider_default_when_unset():
+    model = _resolve_model("openrouter:z-ai/glm-5.2", "k", "https://x/api/v1")
+    assert model.max_retries == 2  # ChatOpenRouter's own default
+
+
 def test_build_orchestrator_with_skills(tmp_path):
     agents_dir = make_agents_dir(tmp_path, with_skills=True)
     repo = tmp_path / "repo"
