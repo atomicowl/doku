@@ -1,0 +1,16 @@
+# Main agent: runs the dispatch loop that documents every entrypoint
+# candidate by fanning out to the subagents under ../subagents/.
+
+name = "orchestrator"
+
+# Skill source directories, relative to this agent's folder; each subdirectory
+# of a source is one skill (a folder with a SKILL.md). Sources are mounted
+# read-only at /skills/orchestrator/ and readable by this agent automatically.
+# skills = ["skills"]
+
+# The default filesystem route is read-write (backed by --out, for
+# /_state/results/*.json etc.); only the /repo mount must stay untouched.
+[[permissions]]
+operations = ["write"]
+paths = ["/repo/**"]
+mode = "deny"

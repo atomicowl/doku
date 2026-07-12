@@ -1,0 +1,27 @@
+name = "entrypoint-documenter"
+description = """Given one entrypoint candidate (type, class/method, file:line, \
+metadata), reads the code under /repo and returns a structured EntrypointDoc: \
+input/output model, mermaid flow graph, and external dependencies."""
+
+# Pydantic model from doku.models the subagent's final answer is coerced into.
+response_format = "EntrypointDoc"
+
+# Skill source directories, relative to this agent's folder; each subdirectory
+# of a source is one skill (a folder with a SKILL.md). Sources are mounted
+# read-only at /skills/entrypoint-documenter/ and readable by this agent
+# automatically (ahead of the deny-everything rule below).
+# skills = ["skills"]
+
+# "/repo" itself is listed too: the "/repo/**" glob matches files under the
+# mount but not the mount point, which would deny `ls` on the repo root — the
+# natural first move for a subagent.
+[[permissions]]
+operations = ["read"]
+paths = ["/repo", "/repo/**"]
+mode = "allow"
+
+# Everything outside the repo mount is off-limits.
+[[permissions]]
+operations = ["read", "write"]
+paths = ["/**"]
+mode = "deny"
